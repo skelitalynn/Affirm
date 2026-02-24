@@ -10,7 +10,14 @@ PROJECT_DIR="/root/projects/Affirm"
 LOG_FILE="$PROJECT_DIR/dev.log"
 REPORT_FILE="$PROJECT_DIR/daily-report.md"
 DAY_PLAN="$PROJECT_DIR/7天开发计划.md"
-GITHUB_REPO="你的GitHub仓库地址"  # 需要替换
+# GitHub仓库信息（使用SSH）
+if [ -f "$PROJECT_DIR/.env" ]; then
+    source "$PROJECT_DIR/.env"
+    GITHUB_REPO="git@github.com:$GITHUB_USERNAME/$GITHUB_REPO.git"
+else
+    # 从当前git配置获取
+    GITHUB_REPO=$(git remote get-url origin 2>/dev/null || echo "git@github.com:skelitalynn/Affirm.git")
+fi
 
 # 颜色输出
 RED='\033[0;31m'
