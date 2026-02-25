@@ -57,9 +57,10 @@ git pull origin main 2>/dev/null || log "首次运行，跳过pull"
 log "2. 执行Day $DAY_NUM 任务..."
 case $DAY_NUM in
     1)
-        # Day 1: 环境搭建
         log "执行Day 1任务：环境搭建"
-        # 这里添加具体的Day 1命令
+        log "执行Day 1任务：环境搭建"
+        # 执行Day 1具体任务
+        /root/projects/Affirm/day1-tasks.sh
         ;;
     2)
         # Day 2: 数据层
