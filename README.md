@@ -1,106 +1,105 @@
 # Affirm - 显化导师Agent
 
-基于OpenClaw + Telegram构建的长期记忆AI导师，支持向量检索、每日Notion归档和个性化配置。
-
-## 🎯 项目概述
-
-**Affirm** 是一个智能的"显化导师"Agent，特点包括：
-- 📱 **Telegram对话入口** - 通过Bot进行自然对话
-- 🧠 **长期记忆系统** - 基于pgvector的语义记忆检索
-- 📅 **自动归档** - 每日对话自动保存到Notion
-- ⚙️ **后台配置** - 独立界面管理用户画像和目标
-- 🤖 **AI集成** - 支持多种AI模型（当前使用GPT-5.3-Codex）
+基于OpenClaw + Telegram构建的长期记忆AI导师，支持向量检索和每日自动归档。
 
 ## 🚀 快速开始
 
-### 环境要求
-- Node.js 18+
-- PostgreSQL 15+ with pgvector
-- Telegram Bot Token
-- AI API密钥（支持OpenAI/Gemini等）
-
-### 安装步骤
-
-1. **克隆项目**
+### 1. 环境准备
 ```bash
+# 克隆项目
 git clone git@github.com:skelitalynn/Affirm.git
 cd Affirm
-```
 
-2. **配置环境变量**
-```bash
+# 配置环境变量
 cp .env.example .env
 # 编辑.env文件，填写你的API密钥
-```
 
-3. **安装依赖**
-```bash
+# 安装依赖
 npm install
 ```
 
-4. **初始化数据库**
+### 2. 数据库初始化
 ```bash
-# 确保PostgreSQL服务运行
+# 确保PostgreSQL运行
 sudo systemctl start postgresql
 
-# 执行数据库初始化
-PGPASSWORD=your_password psql -h localhost -U affirm_user -d affirm_db -f scripts/init-db.sql
+# 初始化数据库
+psql -f scripts/database/schemas/init.sql
 ```
 
-5. **运行验证**
+### 3. 验证环境
 ```bash
-# 测试环境配置
-./scripts/verify-env.js
+# 快速验证
+./scripts/utils/quick-verify.sh
 
-# 测试数据库连接
-./scripts/test-db-connection.js
+# 详细验证
+node scripts/utils/verify-environment.js
 ```
 
-6. **启动服务**
+### 4. 启动开发
 ```bash
-npm start
+# 查看开发计划
+cat docs/development/开发计划.md
+
+# 运行Day 1任务（示例）
+./scripts/development/day1-tasks.sh
 ```
 
 ## 📁 项目结构
 
 ```
 Affirm/
+├── docs/                    # 项目文档
+│   ├── project/            # 项目概述和架构
+│   ├── development/        # 开发计划和指南
+│   └── reports/            # 进度报告和总结
+├── scripts/                # 工具脚本
+│   ├── development/        # 开发自动化脚本
+│   ├── database/           # 数据库脚本
+│   └── utils/              # 工具和验证脚本
 ├── src/                    # 源代码
-│   ├── config.js          # 配置文件
-│   ├── db/                # 数据库层
-│   │   └── connection.js  # 数据库连接
-│   ├── api/               # API接口
-│   ├── services/          # 业务逻辑
-│   └── utils/             # 工具函数
-├── scripts/               # 脚本文件
-│   ├── init-db.sql       # 数据库初始化
-│   ├── test-db-connection.js # 数据库测试
-│   └── verify-env.js     # 环境验证
-├── tests/                 # 测试文件
-├── docs/                  # 文档
-├── .env                   # 环境变量
+│   ├── config.js          # 配置管理
+│   └── db/connection.js   # 数据库连接
+├── tests/                  # 测试代码（预留）
+├── .env                   # 环境变量配置
 ├── .gitignore            # Git忽略配置
-├── package.json          # 项目配置
-└── README.md             # 本文档
+├── package.json          # 项目依赖配置
+└── README.md             # 本文件
 ```
 
-## 🗄️ 数据库设计
+## 📚 文档目录
 
-### 核心表结构
-1. **users** - 用户基本信息
-2. **profiles** - 用户画像和目标
-3. **messages** - 对话记录（含向量嵌入）
-4. **knowledge_chunks** - 知识片段（含向量嵌入）
-5. **sync_jobs** - 同步任务记录
+### 项目文档 (`docs/project/`)
+- `项目概述.md` - 完整项目说明、架构、技术栈
+- `数据库设计.md` - 数据库表结构和关系
 
-### 向量检索
-- 使用pgvector扩展存储768维向量
-- 基于余弦相似度的语义检索
-- 支持时间窗口+语义相似度混合召回
+### 开发文档 (`docs/development/`)
+- `开发计划.md` - 7天详细开发计划
+- `开发指南.md` - 编码规范和最佳实践
 
-## 🔧 配置说明
+### 报告文档 (`docs/reports/`)
+- `day1-complete.md` - Day 1完成报告
+- 后续每日报告将在此目录生成
 
-### 环境变量 (.env)
+## 🔧 工具脚本
+
+### 开发脚本 (`scripts/development/`)
+- `daily-development.sh` - 每日自动化开发脚本
+- `day1-tasks.sh` - Day 1具体任务脚本
+- 后续每日任务脚本将在此目录
+
+### 数据库脚本 (`scripts/database/`)
+- `schemas/init.sql` - 数据库初始化脚本
+- `migrations/` - 数据库迁移脚本（预留）
+
+### 工具脚本 (`scripts/utils/`)
+- `quick-verify.sh` - 快速环境验证
+- `verify-environment.js` - 完整环境验证
+- `test-database.js` - 数据库连接测试
+
+## ⚙️ 配置说明
+
+### 必需配置 (.env)
 ```bash
 # 数据库
 DB_URL=postgresql://user:password@localhost:5432/dbname
@@ -108,118 +107,49 @@ DB_URL=postgresql://user:password@localhost:5432/dbname
 # Telegram
 TELEGRAM_BOT_TOKEN=your_bot_token
 
-# AI模型（当前使用Codex 5.3代理）
+# AI模型
 OPENAI_API_KEY=your_api_key
 OPENAI_BASE_URL=https://api.ikuncode.cc/v1
 MODEL_NAME=gpt-5.3-codex
 
-# GitHub（SSH方式）
+# GitHub
 GITHUB_USERNAME=your_username
 GITHUB_REPO=Affirm
-
-# OpenClaw
-OPENCLAW_GATEWAY_URL=http://localhost:18789
-OPENCLAW_GATEWAY_TOKEN=your_gateway_token
-
-# Notion（Day 4配置）
-NOTION_TOKEN=your_notion_token
-NOTION_PARENT_PAGE_ID=your_page_id
 ```
 
-## 🤖 AI模型集成
-
-### 当前配置
-- **模型**: GPT-5.3-Codex
-- **提供商**: 通过代理服务
-- **特点**: 代码能力强，适合开发场景
-
-### 支持切换
-可修改`.env`文件切换其他模型：
-- OpenAI GPT系列
-- Google Gemini
-- 其他兼容OpenAI API的模型
+完整配置说明见 `docs/project/项目概述.md`
 
 ## 📅 开发计划
 
-### 7天开发计划
-1. **Day 1**: 环境搭建 + 数据库 ✅
-2. **Day 2**: 核心数据层
-3. **Day 3**: OpenClaw集成  
-4. **Day 4**: Notion集成
-5. **Day 5**: 后台配置页
-6. **Day 6**: 测试优化
-7. **Day 7**: 部署上线
+### 7天自动化开发
+- **Day 1**: 环境搭建 + 数据库 ✅ 完成
+- **Day 2**: 核心数据层 (2026-02-26)
+- **Day 3**: OpenClaw集成 (2026-02-27)
+- **Day 4**: Notion集成 (2026-02-28)
+- **Day 5**: 后台配置页 (2026-03-01)
+- **Day 6**: 测试优化 (2026-03-02)
+- **Day 7**: 部署上线 (2026-03-03)
 
-### 自动化开发
-项目配置了OpenClaw自动化任务：
-- **每日09:00**: 自动执行当日开发任务
-- **每日19:00**: 发送进度报告到Telegram
-- **自动提交**: 代码自动推送到GitHub
+每日09:00自动执行开发任务，19:00发送进度报告。
 
-## 🧪 测试与验证
-
-### 环境验证
-```bash
-# 验证所有环境配置
-./scripts/verify-env.js
-
-# 验证数据库连接和功能
-./scripts/test-db-connection.js
-```
-
-### 单元测试
-```bash
-npm test
-```
-
-## 📞 问题排查
+## 🆘 支持与帮助
 
 ### 常见问题
-1. **数据库连接失败**
-   - 检查PostgreSQL服务状态
-   - 验证DB_URL配置
-   - 检查用户权限
+1. **数据库连接失败**: 运行 `./scripts/utils/quick-verify.sh`
+2. **环境配置问题**: 查看 `docs/project/项目概述.md`
+3. **开发流程问题**: 查看 `docs/development/开发计划.md`
 
-2. **Telegram Bot无响应**
-   - 验证Bot Token
-   - 检查网络连接
-   - 确认Bot已启用
-
-3. **AI API调用失败**
-   - 验证API密钥
-   - 检查配额限制
-   - 确认模型名称正确
-
-### 日志查看
-```bash
-# 查看应用日志
-tail -f logs/app.log
-
-# 查看数据库日志
-sudo tail -f /var/lib/pgsql/data/log/postgresql-*.log
-```
-
-## 🤝 贡献指南
-
-1. Fork项目
-2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启Pull Request
+### 获取帮助
+- 查看详细文档: `docs/` 目录
+- 运行验证脚本: `scripts/utils/` 目录
+- 检查进度报告: `docs/reports/` 目录
 
 ## 📄 许可证
 
-本项目采用MIT许可证 - 查看 [LICENSE](LICENSE) 文件了解详情
-
-## 🙏 致谢
-
-- [OpenClaw](https://openclaw.ai) - 自动化编排框架
-- [pgvector](https://github.com/pgvector/pgvector) - PostgreSQL向量扩展
-- [Telegram Bot API](https://core.telegram.org/bots/api) - 消息平台
+MIT License - 详见 LICENSE 文件
 
 ---
-
 **项目状态**: Day 1 ✅ 完成 | 总体进度: 14.3%
-
-**最新更新**: 2026-02-25  
+**最新更新**: 2026-02-25
 **维护者**: 小苹果 🍎
+**GitHub**: https://github.com/skelitalynn/Affirm
