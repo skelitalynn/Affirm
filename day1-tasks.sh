@@ -180,9 +180,9 @@ const config = {
     
     // AI模型配置
     ai: {
-        provider: 'gemini',
-        apiKey: process.env.GEMINI_API_KEY,
-        model: process.env.MODEL_NAME || 'gemini-3-flash',
+        provider: 'openai',
+        apiKey: process.env.OPENAI_API_KEY,
+        model: process.env.MODEL_NAME || 'gpt-5.3-codex',
         temperature: 0.7,
         maxTokens: 1000
     },
@@ -204,7 +204,7 @@ const config = {
 };
 
 // 验证必要配置
-const requiredEnvVars = ['DB_URL', 'TELEGRAM_BOT_TOKEN', 'GEMINI_API_KEY'];
+const requiredEnvVars = ['DB_URL', 'TELEGRAM_BOT_TOKEN', 'OPENAI_API_KEY'];
 requiredEnvVars.forEach(varName => {
     if (!process.env[varName] || process.env[varName].includes('请填写')) {
         console.warn(`⚠️  环境变量 ${varName} 未正确配置`);
