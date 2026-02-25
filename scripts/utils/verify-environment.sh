@@ -16,12 +16,12 @@ echo ""
 echo "1. 数据库配置验证"
 echo "------------------"
 if command -v psql &> /dev/null; then
-    if PGPASSWORD=affirm_password_123 psql -h localhost -U affirm_user -d affirm_db -c "SELECT 1;" &> /dev/null; then
+    if PGPASSWORD=your_database_password psql -h localhost -U affirm_user -d affirm_db -c "SELECT 1;" &> /dev/null; then
         echo "✅ PostgreSQL连接成功"
         
         # 检查表（Day 1会创建）
         echo "📊 数据库信息:"
-        PGPASSWORD=affirm_password_123 psql -h localhost -U affirm_user -d affirm_db -c "
+        PGPASSWORD=your_database_password psql -h localhost -U affirm_user -d affirm_db -c "
 SELECT 
     datname as \"数据库\",
     pg_size_pretty(pg_database_size(datname)) as \"大小\"

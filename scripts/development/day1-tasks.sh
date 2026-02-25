@@ -139,7 +139,7 @@ EOF
 # 4. 执行数据库初始化
 echo "4. 初始化数据库表结构..."
 if command -v psql &> /dev/null; then
-    PGPASSWORD=affirm_password_123 psql -h localhost -U affirm_user -d affirm_db -f /root/projects/Affirm/scripts/init-db.sql 2>/dev/null || {
+    PGPASSWORD=your_database_password psql -h localhost -U affirm_user -d affirm_db -f /root/projects/Affirm/scripts/init-db.sql 2>/dev/null || {
         echo "⚠️  数据库初始化可能失败（pgvector扩展未安装）"
         echo "    将在Day 1任务中处理pgvector安装"
     }

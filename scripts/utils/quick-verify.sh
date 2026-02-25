@@ -38,15 +38,15 @@ fi
 
 # 2. 检查数据库
 echo -e "\n2. 检查数据库状态..."
-if PGPASSWORD=affirm_password_123 psql -h localhost -U affirm_user -d affirm_db -c "SELECT 1" &>/dev/null; then
+if PGPASSWORD=your_database_password psql -h localhost -U affirm_user -d affirm_db -c "SELECT 1" &>/dev/null; then
     echo "✅ 数据库连接正常"
     
     # 检查表
-    table_count=$(PGPASSWORD=affirm_password_123 psql -h localhost -U affirm_user -d affirm_db -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" | tr -d ' ')
+    table_count=$(PGPASSWORD=your_database_password psql -h localhost -U affirm_user -d affirm_db -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" | tr -d ' ')
     echo "✅ 数据库表数量: $table_count"
     
     # 检查pgvector
-    if PGPASSWORD=affirm_password_123 psql -h localhost -U affirm_user -d affirm_db -t -c "SELECT 1 FROM pg_extension WHERE extname = 'vector';" | grep -q 1; then
+    if PGPASSWORD=your_database_password psql -h localhost -U affirm_user -d affirm_db -t -c "SELECT 1 FROM pg_extension WHERE extname = 'vector';" | grep -q 1; then
         echo "✅ pgvector扩展已安装"
     else
         echo "❌ pgvector扩展未安装"
