@@ -26,11 +26,12 @@ const config = {
         databaseId: process.env.NOTION_DATABASE_ID
     },
     
-    // AI模型配置
+    // AI模型配置 - 使用DeepSeek
     ai: {
-        provider: 'openai',
-        apiKey: process.env.OPENAI_API_KEY,
-        model: process.env.MODEL_NAME || 'gpt-5.3-codex',
+        provider: 'deepseek',
+        apiKey: process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY, // 兼容现有配置
+        baseURL: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1',
+        model: process.env.MODEL_NAME || 'deepseek-reasoner',
         temperature: 0.7,
         maxTokens: 1000
     },
@@ -52,11 +53,16 @@ const config = {
 };
 
 // 验证必要配置
-const requiredEnvVars = ['DB_URL', 'TELEGRAM_BOT_TOKEN', 'OPENAI_API_KEY'];
+const requiredEnvVars = ['DB_URL', 'TELEGRAM_BOT_TOKEN'];
 requiredEnvVars.forEach(varName => {
     if (!process.env[varName] || process.env[varName].includes('请填写')) {
         console.warn(`⚠️  环境变量 ${varName} 未正确配置`);
     }
 });
+
+// 验证AI配置
+if (!process.env.DEEPSEEK_API_KEY && !process.env.OPENAI_API_KEY) {
+    console.warn('⚠️  未配置AI API密钥 (需要DEEPSEEK_API_KEY或OPENAI_API_KEY)');
+}
 
 module.exports = config;

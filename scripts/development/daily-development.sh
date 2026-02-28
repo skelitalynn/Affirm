@@ -42,9 +42,16 @@ START_DATE="2026-02-25"
 TODAY=$(date '+%Y-%m-%d')
 DAY_NUM=$(( ($(date -d "$TODAY" +%s) - $(date -d "$START_DATE" +%s)) / 86400 + 1 ))
 
-if [ "$DAY_NUM" -lt 1 ] || [ "$DAY_NUM" -gt 7 ]; then
-    log "开发周期已结束或未开始 (第 $DAY_NUM 天)"
-    exit 0
+# 如果今天是第1天之前，设为第1天
+if [ "$DAY_NUM" -lt 1 ]; then
+    DAY_NUM=1
+    log "开发周期未开始，从第 $DAY_NUM 天开始"
+fi
+
+# 如果超过7天，设为第7天
+if [ "$DAY_NUM" -gt 7 ]; then
+    DAY_NUM=7
+    log "开发周期已结束，执行第 $DAY_NUM 天收尾任务"
 fi
 
 log "🎯 开始第 $DAY_NUM 天开发任务"
@@ -53,71 +60,104 @@ log "🎯 开始第 $DAY_NUM 天开发任务"
 log "1. 同步Git仓库..."
 git pull origin main 2>/dev/null || log "首次运行，跳过pull"
 
-# 2. 执行当日任务（这里需要根据具体任务编写）
+# 2. 执行当日任务
 log "2. 执行Day $DAY_NUM 任务..."
 case $DAY_NUM in
     1)
         log "执行Day 1任务：环境搭建"
-        log "执行Day 1任务：环境搭建"
-        # 执行Day 1具体任务
-        /root/projects/Affirm/day1-tasks.sh
+        # 检查Day 1任务脚本是否存在
+        if [ -f "$PROJECT_DIR/scripts/development/day1-tasks.sh" ]; then
+            bash "$PROJECT_DIR/scripts/development/day1-tasks.sh"
+        else
+            error "Day 1任务脚本不存在: $PROJECT_DIR/scripts/development/day1-tasks.sh"
+        fi
         ;;
     2)
-        # Day 2: 数据层
         log "执行Day 2任务：数据层开发"
+        # 检查Day 2任务脚本是否存在
+        if [ -f "$PROJECT_DIR/scripts/development/day2-tasks.sh" ]; then
+            bash "$PROJECT_DIR/scripts/development/day2-tasks.sh"
+        else
+            error "Day 2任务脚本不存在: $PROJECT_DIR/scripts/development/day2-tasks.sh"
+        fi
         ;;
     3)
-        # Day 3: OpenClaw集成
         log "执行Day 3任务：OpenClaw集成"
+        # 检查Day 3任务脚本是否存在
+        if [ -f "$PROJECT_DIR/scripts/development/day3-tasks.sh" ]; then
+            bash "$PROJECT_DIR/scripts/development/day3-tasks.sh"
+        else
+            error "Day 3任务脚本不存在: $PROJECT_DIR/scripts/development/day3-tasks.sh"
+        fi
         ;;
     4)
-        # Day 4: Notion集成
         log "执行Day 4任务：Notion集成"
+        # 检查Day 4任务脚本是否存在
+        if [ -f "$PROJECT_DIR/scripts/development/day4-tasks.sh" ]; then
+            bash "$PROJECT_DIR/scripts/development/day4-tasks.sh"
+        else
+            error "Day 4任务脚本不存在: $PROJECT_DIR/scripts/development/day4-tasks.sh"
+        fi
         ;;
     5)
-        # Day 5: 后台配置页
         log "执行Day 5任务：后台配置页"
+        # 检查Day 5任务脚本是否存在
+        if [ -f "$PROJECT_DIR/scripts/development/day5-tasks.sh" ]; then
+            bash "$PROJECT_DIR/scripts/development/day5-tasks.sh"
+        else
+            error "Day 5任务脚本不存在: $PROJECT_DIR/scripts/development/day5-tasks.sh"
+        fi
         ;;
     6)
-        # Day 6: 测试优化
         log "执行Day 6任务：测试优化"
+        # 检查Day 6任务脚本是否存在
+        if [ -f "$PROJECT_DIR/scripts/development/day6-tasks.sh" ]; then
+            bash "$PROJECT_DIR/scripts/development/day6-tasks.sh"
+        else
+            error "Day 6任务脚本不存在: $PROJECT_DIR/scripts/development/day6-tasks.sh"
+        fi
         ;;
     7)
-        # Day 7: 部署上线
         log "执行Day 7任务：部署上线"
+        # 检查Day 7任务脚本是否存在
+        if [ -f "$PROJECT_DIR/scripts/development/day7-tasks.sh" ]; then
+            bash "$PROJECT_DIR/scripts/development/day7-tasks.sh"
+        else
+            error "Day 7任务脚本不存在: $PROJECT_DIR/scripts/development/day7-tasks.sh"
+        fi
         ;;
 esac
 
 # 3. 生成进度报告
 log "3. 生成每日进度报告..."
-cat > "$REPORT_FILE" << EOF
-# 📊 Affirm项目 - 第 $DAY_NUM 天进度报告
-**日期：** $TODAY
-**开发日：** Day $DAY_NUM / 7
-
-## ✅ 今日完成
-- [ ] 任务1
-- [ ] 任务2
-- [ ] 任务3
-
-## 🐛 遇到的问题
-- 暂无
-
-## 📝 代码变更
-\`\`\`bash
-$(git status --short 2>/dev/null || echo "无变更")
-\`\`\`
-
-## 🗓️ 明日计划 (Day $((DAY_NUM + 1)))
-根据7天开发计划执行
-
-## 📈 总体进度
-- 已完成：$((DAY_NUM - 1)) / 7 天
-- 剩余：$((7 - DAY_NUM + 1)) 天
-
----
-*报告生成时间：$(date)*
-EOF
+{
+    echo "# 📊 Affirm项目 - 第 $DAY_NUM 天进度报告"
+    echo "**日期：** $TODAY"
+    echo "**开发日：** Day $DAY_NUM / 7"
+    echo ""
+    echo "## ✅ 今日完成"
+    echo "- [ ] 任务1"
+    echo "- [ ] 任务2"
+    echo "- [ ] 任务3"
+    echo ""
+    echo "## 🐛 遇到的问题"
+    echo "- 暂无"
+    echo ""
+    echo "## 📝 代码变更"
+    echo "\`\`\`bash"
+    git status --short 2>/dev/null || echo "无变更"
+    echo "\`\`\`"
+    echo ""
+    echo "## 🗓️ 明日计划 (Day $((DAY_NUM + 1)))"
+    echo "根据7天开发计划执行"
+    echo ""
+    echo "## 📈 总体进度"
+    echo "- 已完成：$((DAY_NUM - 1)) / 7 天"
+    echo "- 剩余：$((7 - DAY_NUM + 1)) 天"
+    echo ""
+    echo "---"
+    echo "*报告生成时间：$(date)*"
+} > "$REPORT_FILE"
 
 # 4. 提交代码
 log "4. 提交代码到GitHub..."

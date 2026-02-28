@@ -1,0 +1,18 @@
+{
+  "name": "affirm",
+  "version": "1.0.0",
+  "description": "Affirm项目 - OpenClaw技能集成",
+  "main": "index.js",
+  "author": "skelitalynn",
+  "license": "MIT",
+  "dependencies": {
+    "node-telegram-bot-api": "^0.66.0",
+    "dotenv": "^16.0.0",
+    "pg": "^8.11.0"
+  },
+  "openclaw": {
+    "skill": true,
+    "provides": ["telegram", "memory", "ai"],
+    "requires": ["database", "openai"]
+  }
+}

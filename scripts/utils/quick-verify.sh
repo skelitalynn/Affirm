@@ -13,11 +13,11 @@ files=(
     ".gitignore"
     "src/config.js"
     "src/db/connection.js"
-    "scripts/init-db.sql"
-    "scripts/test-db-connection.js"
-    "scripts/verify-env.js"
-    "DAY1_COMPLETED.md"
-    "7天开发计划.md"
+    "scripts/database/schemas/init.sql"
+    "scripts/utils/test-database.js"
+    "scripts/utils/verify-environment.js"
+    "docs/reports/day1-complete.md"
+    "docs/development/开发计划.md"
 )
 
 missing_files=0
