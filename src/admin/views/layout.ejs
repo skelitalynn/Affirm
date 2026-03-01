@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %> - Affirm后台管理</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1><i class="fas fa-cogs"></i> Affirm后台管理</h1>
+            <div class="user-info">
+                <span>欢迎, <%= user.name %> (<%= user.role %>)</span>
+                <a href="/admin/logout" class="btn btn-sm">退出</a>
+            </div>
+        </header>
+        
+        <nav class="sidebar">
+            <ul>
+                <li><a href="/admin"><i class="fas fa-tachometer-alt"></i> 仪表板</a></li>
+                <li><a href="/admin/profiles"><i class="fas fa-users"></i> Profiles管理</a></li>
+                <li><a href="/admin/knowledge"><i class="fas fa-brain"></i> 知识管理</a></li>
+                <li><a href="/admin/settings"><i class="fas fa-sliders-h"></i> 系统设置</a></li>
+            </ul>
+        </nav>
+        
+        <main class="main">
+            <% if (typeof flash !== 'undefined' && flash.success) { %>
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle"></i> <%= flash.success %>
+                </div>
+            <% } %>
+            <% if (typeof flash !== 'undefined' && flash.error) { %>
+                <div class="alert alert-error">
+                    <i class="fas fa-exclamation-circle"></i> <%= flash.error %>
+                </div>
+            <% } %>
+            
+            <h2><%= title %></h2>
+            <%- body %>
+        </main>
+        
+        <footer class="footer">
+            <p>Affirm后台管理 v<%= version || '1.0.0' %> &copy; 2026</p>
+        </footer>
+    </div>
+    
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

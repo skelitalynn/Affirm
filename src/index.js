@@ -10,11 +10,14 @@ const config = require('./config');
 // 初始化服务
 async function initialize() {
     console.log('🤖 Affirm项目启动中...');
-    console.log('📊 环境:', config.env);
+    console.log('📊 环境:', config.app.nodeEnv || 'development');
     console.log('🔧 配置检查:');
     console.log('   Telegram Token:', config.telegram.botToken ? '✅ 已配置' : '❌ 未配置');
-    console.log('   OpenAI API Key:', config.openai.apiKey ? '✅ 已配置' : '❌ 未配置');
-    console.log('   DeepSeek API Key:', config.deepseek.apiKey ? '✅ 已配置' : '❌ 未配置');
+    if (config.telegram.botToken) {
+        console.log(`   Token预览: ${config.telegram.botToken.substring(0, 10)}...${config.telegram.botToken.substring(config.telegram.botToken.length - 4)}`);
+    }
+    console.log('   AI API Key:', config.ai.apiKey ? '✅ 已配置' : '❌ 未配置');
+    console.log('   AI Provider:', config.ai.provider || 'deepseek');
     console.log('   Database URL:', config.database.url ? '✅ 已配置' : '❌ 未配置');
     
     try {

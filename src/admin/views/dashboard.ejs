@@ -1,0 +1,65 @@
+<% layout('layout') -%>
+
+<div class="dashboard">
+    <div class="stats">
+        <div class="stat-card">
+            <div class="stat-icon">
+                <i class="fas fa-users"></i>
+            </div>
+            <div class="stat-content">
+                <h3>Profiles</h3>
+                <p class="stat-number"><%= stats.profilesCount || 0 %></p>
+                <p class="stat-desc">已配置的身份模板</p>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon">
+                <i class="fas fa-brain"></i>
+            </div>
+            <div class="stat-content">
+                <h3>知识条目</h3>
+                <p class="stat-number"><%= stats.knowledgeCount || 0 %></p>
+                <p class="stat-desc">已存储的知识片段</p>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon">
+                <i class="fas fa-comments"></i>
+            </div>
+            <div class="stat-content">
+                <h3>对话消息</h3>
+                <p class="stat-number"><%= stats.messagesCount || 0 %></p>
+                <p class="stat-desc">已处理的对话</p>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon">
+                <i class="fas fa-database"></i>
+            </div>
+            <div class="stat-content">
+                <h3>数据库</h3>
+                <p class="stat-number">正常</p>
+                <p class="stat-desc">连接状态良好</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="recent-activity">
+        <h3><i class="fas fa-history"></i> 最近活动</h3>
+        <ul>
+            <% if (recentActivity && recentActivity.length > 0) { %>
+                <% recentActivity.forEach(activity => { %>
+                    <li>
+                        <span class="activity-time"><%= activity.time %></span>
+                        <span class="activity-text"><%= activity.text %></span>
+                    </li>
+                <% }) %>
+            <% } else { %>
+                <li>暂无最近活动</li>
+            <% } %>
+        </ul>
+    </div>
+</div>

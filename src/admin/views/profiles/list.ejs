@@ -1,0 +1,61 @@
+<% layout('layout') -%>
+
+<div class="action-bar">
+    <a href="/admin/profiles/new" class="btn btn-primary">
+        <i class="fas fa-plus"></i> 创建Profile
+    </a>
+</div>
+
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>名称</th>
+            <th>描述</th>
+            <th>关键词</th>
+            <th>默认</th>
+            <th>创建时间</th>
+            <th>操作</th>
+        </tr>
+    </thead>
+    <tbody>
+        <% if (profiles && profiles.length > 0) { %>
+            <% profiles.forEach(profile => { %>
+                <tr>
+                    <td><%= profile.id %></td>
+                    <td><strong><%= profile.name %></strong></td>
+                    <td><%= profile.description %></td>
+                    <td>
+                        <% if (profile.keywords && profile.keywords.length > 0) { %>
+                            <%= profile.keywords.join(', ') %>
+                        <% } else { %>
+                            <span class="text-muted">无</span>
+                        <% } %>
+                    </td>
+                    <td>
+                        <% if (profile.is_default) { %>
+                            <span class="badge badge-success">是</span>
+                        <% } else { %>
+                            <span class="badge badge-secondary">否</span>
+                        <% } %>
+                    </td>
+                    <td><%= new Date(profile.created_at).toLocaleString() %></td>
+                    <td class="actions">
+                        <a href="/admin/profiles/<%= profile.id %>/edit" class="btn btn-sm btn-edit">
+                            <i class="fas fa-edit"></i> 编辑
+                        </a>
+                        <form action="/admin/profiles/<%= profile.id %>/delete" method="POST" style="display: inline;">
+                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('确定删除此profile？')">
+                                <i class="fas fa-trash"></i> 删除
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+            <% }) %>
+        <% } else { %>
+            <tr>
+                <td colspan="7" class="text-center">暂无profiles，<a href="/admin/profiles/new">创建一个</a></td>
+            </tr>
+        <% } %>
+    </tbody>
+</table>

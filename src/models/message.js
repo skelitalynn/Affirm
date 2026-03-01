@@ -345,6 +345,44 @@ class Message {
     }
 
     /**
+     * 获取用户指定日期的消息（用于每日归档）
+     * @param {string} userId - 用户UUID
+     * @param {Date|string} date - 日期对象或日期字符串（如'2026-02-28'）
+     * @returns {Promise<Array>} 指定日期的消息列表（按时间升序）
+     */
+    static async getDailyMessages(userId, date = new Date()) {
+        // 确保date是Date对象
+        const targetDate = date instanceof Date ? date : new Date(date);
+        if (isNaN(targetDate.getTime())) {
+            throw new Error('无效的日期格式');
+        }
+        
+        // 计算当天的开始和结束时间（UTC）
+        const startDate = new Date(Date.UTC(
+            targetDate.getUTCFullYear(),
+            targetDate.getUTCMonth(),
+            targetDate.getUTCDate(),
+            0, 0, 0, 0
+        ));
+        const endDate = new Date(Date.UTC(
+            targetDate.getUTCFullYear(),
+            targetDate.getUTCMonth(),
+            targetDate.getUTCDate(),
+            23, 59, 59, 999
+        ));
+        
+        const query = `
+            SELECT * FROM messages 
+            WHERE user_id = $1
+            AND created_at >= $2
+            AND created_at <= $3
+            ORDER BY created_at ASC
+        `;
+        const result = await db.query(query, [userId, startDate.toISOString(), endDate.toISOString()]);
+        return result.rows;
+    }
+
+    /**
      * 测试消息功能
      * @returns {Promise<boolean>} 测试是否成功
      */

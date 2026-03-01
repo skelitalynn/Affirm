@@ -3,19 +3,21 @@ const TelegramBot = require('node-telegram-bot-api');
 const User = require('../models/user');
 const Message = require('../models/message');
 const AIService = require('./ai');
+const NotionService = require('./notion');
 
 class TelegramService {
     constructor(config) {
         this.config = config;
         this.bot = null;
         this.aiService = null;
+        this.notionService = null; // Day 4: Notion归档服务
         this.isRunning = false;
     }
 
     async start() {
         console.log('🤖 启动Telegram机器人...');
         
-        const token = this.config.botToken;
+        const token = this.config.telegram ? this.config.telegram.botToken : this.config.botToken;
         if (!token) {
             throw new Error('Telegram机器人令牌未配置 (TELEGRAM_BOT_TOKEN)');
         }
@@ -23,6 +25,9 @@ class TelegramService {
         // 初始化AI服务
         this.aiService = new AIService(this.config.ai);
         await this.aiService.initialize();
+
+        // 初始化Notion归档服务（Day 4）
+        this.notionService = new NotionService();
 
         // 创建Telegram机器人
         this.bot = new TelegramBot(token, { polling: true });
@@ -41,10 +46,43 @@ class TelegramService {
     }
 
     stop() {
-        if (this.bot) {
-            this.bot.stopPolling();
+        console.log('🛑 正在停止Telegram机器人并清理资源...');
+        
+        try {
+            // 1. 停止Telegram轮询
+            if (this.bot) {
+                this.bot.stopPolling();
+                console.log('   ✅ Telegram轮询已停止');
+                
+                // 清理事件监听器（将bot引用置空）
+                this.bot = null;
+            }
+            
+            // 2. 释放AI客户端资源
+            if (this.aiService && this.aiService.client) {
+                // OpenAI客户端没有显式的close方法，将引用置空
+                this.aiService.client = null;
+                console.log('   ✅ AI客户端资源已释放');
+            }
+            
+            // 3. 关闭数据库连接池（异步，不阻塞）
+            try {
+                const { db } = require('../db/connection');
+                db.close()
+                    .then(() => console.log('   ✅ 数据库连接池已关闭'))
+                    .catch(error => console.warn('⚠️  关闭数据库连接池时出错:', error.message));
+            } catch (requireError) {
+                console.warn('⚠️  加载数据库模块时出错:', requireError.message);
+            }
+            
             this.isRunning = false;
-            console.log('🛑 Telegram机器人已停止');
+            console.log('✅ Telegram机器人已完全停止，所有资源已清理');
+            
+        } catch (error) {
+            console.error('❌ 停止机器人时发生错误:', error.message);
+            // 确保标志被设置
+            this.isRunning = false;
+            throw error;
         }
     }
 
@@ -54,7 +92,8 @@ class TelegramService {
             { command: 'start', description: '开始使用机器人' },
             { command: 'help', description: '获取帮助信息' },
             { command: 'history', description: '查看最近对话' },
-            { command: 'clear', description: '清除对话历史' }
+            { command: 'clear', description: '清除对话历史' },
+            { command: 'archive_now', description: '归档今日对话到Notion' }
         ];
 
         this.bot.setMyCommands(commands).catch(error => {
@@ -92,6 +131,7 @@ class TelegramService {
         this.bot.onText(/\/help/, (msg) => this.handleHelpCommand(msg));
         this.bot.onText(/\/history/, (msg) => this.handleHistoryCommand(msg));
         this.bot.onText(/\/clear/, (msg) => this.handleClearCommand(msg));
+        this.bot.onText(/\/archive_now/, (msg) => this.handleArchiveCommand(msg));
 
         console.log('✅ 事件监听器设置完成');
     }
@@ -334,6 +374,82 @@ class TelegramService {
         } catch (error) {
             console.error('❌ 处理/clear命令时出错:', error.message);
             await this.bot.sendMessage(chatId, '抱歉，处理清除命令时出现问题。请稍后再试。');
+        }
+    }
+    
+    async handleArchiveCommand(msg) {
+        const chatId = msg.chat.id;
+        const userId = msg.from.id;
+        const username = msg.from.username || msg.from.first_name || '用户';
+        
+        console.log(`📦 [${username}:${userId}] 请求归档今日对话`);
+        
+        try {
+            // 发送"正在处理"状态
+            this.bot.sendChatAction(chatId, 'typing').catch(() => {});
+            
+            // 确保用户存在
+            const user = await this.ensureUser({
+                telegram_id: userId,
+                username: username
+            });
+            
+            if (!user) {
+                throw new Error('用户不存在，无法归档');
+            }
+            
+            // 获取今日消息
+            const today = new Date();
+            const dailyMessages = await Message.getDailyMessages(user.id, today);
+            
+            if (dailyMessages.length === 0) {
+                await this.bot.sendMessage(chatId, '📭 今天还没有任何对话记录，无法归档。\n\n请先和我聊几句吧！😊', {
+                    parse_mode: 'HTML'
+                });
+                return;
+            }
+            
+            await this.bot.sendMessage(chatId, `📦 正在归档今日 ${dailyMessages.length} 条对话到Notion...\n\n请稍等，这可能需要几秒钟。`, {
+                parse_mode: 'HTML'
+            });
+            
+            // 归档到Notion
+            let pageId = null;
+            try {
+                pageId = await this.notionService.archiveDailyMessages(
+                    user.id,
+                    username,
+                    dailyMessages,
+                    today
+                );
+            } catch (notionError) {
+                console.error('❌ Notion归档失败:', notionError.message);
+                // Notion归档失败不影响主流程，只发送错误消息
+                await this.bot.sendMessage(chatId, `❌ 归档到Notion时出现错误:\n\n<code>${notionError.message}</code>\n\n请检查Notion配置或稍后再试。`, {
+                    parse_mode: 'HTML'
+                });
+                return;
+            }
+            
+            if (pageId) {
+                // 创建成功，发送成功消息
+                await this.bot.sendMessage(chatId, `✅ 归档成功！\n\n📊 统计: 今日 ${dailyMessages.length} 条对话已保存到Notion。\n\n📅 日期: ${today.toISOString().split('T')[0]}\n👤 用户: ${username}\n🔗 页面ID: <code>${pageId}</code>`, {
+                    parse_mode: 'HTML'
+                });
+            } else {
+                await this.bot.sendMessage(chatId, '⚠️  归档完成，但未返回页面ID。请检查Notion配置。', {
+                    parse_mode: 'HTML'
+                });
+            }
+            
+        } catch (error) {
+            console.error('❌ 处理/archive_now命令时出错:', error.message);
+            console.error(error.stack);
+            
+            // 发送通用错误消息（不暴露内部细节）
+            await this.bot.sendMessage(chatId, '抱歉，处理归档命令时出现问题。请稍后再试或检查配置。', {
+                parse_mode: 'HTML'
+            });
         }
     }
 }
