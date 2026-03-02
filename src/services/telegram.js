@@ -4,20 +4,33 @@ const User = require('../models/user');
 const Message = require('../models/message');
 const AIService = require('./ai');
 const NotionService = require('./notion');
+const configManager = require('../config/manager'); // Day 3+ 配置管理
+const { 
+    errorHandler, 
+    DatabaseError, 
+    AIError, 
+    NetworkError,
+    TelegramError,
+    handleError,
+    getUserMessage,
+    withRetry 
+} = require('../utils/error-handler'); // Day 3+ 错误处理
+const { messageQueue, enqueue } = require('../utils/message-queue'); // Day 3+ 并发控制
 
 class TelegramService {
     constructor(config) {
-        this.config = config;
+        this.config = config; // 保持向后兼容
         this.bot = null;
         this.aiService = null;
         this.notionService = null; // Day 4: Notion归档服务
         this.isRunning = false;
+        this.configManager = configManager; // Day 3+ 配置管理
     }
 
     async start() {
         console.log('🤖 启动Telegram机器人...');
         
-        const token = this.config.telegram ? this.config.telegram.botToken : this.config.botToken;
+        const token = this.configManager.get('telegram.botToken');
         if (!token) {
             throw new Error('Telegram机器人令牌未配置 (TELEGRAM_BOT_TOKEN)');
         }
@@ -70,19 +83,43 @@ class TelegramService {
                 const { db } = require('../db/connection');
                 db.close()
                     .then(() => console.log('   ✅ 数据库连接池已关闭'))
-                    .catch(error => console.warn('⚠️  关闭数据库连接池时出错:', error.message));
+                    .catch(error => {
+                        const context = { function: 'db.close', stage: 'shutdown' };
+                        handleError(error, context);
+                        console.warn('⚠️  关闭数据库连接池时出错:', error.message);
+                    });
             } catch (requireError) {
+                const context = { function: 'requireDbConnection', module: '../db/connection' };
+                handleError(requireError, context);
                 console.warn('⚠️  加载数据库模块时出错:', requireError.message);
+            }
+            
+            // 4. 清理消息队列（Day 3+ 并发控制）
+            try {
+                const { messageQueue } = require('../utils/message-queue');
+                const clearedTasks = messageQueue.clearAll();
+                if (clearedTasks > 0) {
+                    console.log(`   ✅ 消息队列已清理，取消 ${clearedTasks} 个待处理任务`);
+                }
+            } catch (queueError) {
+                const context = { function: 'messageQueue.clearAll', stage: 'shutdown' };
+                handleError(queueError, context);
+                console.warn('⚠️  清理消息队列时出错:', queueError.message);
             }
             
             this.isRunning = false;
             console.log('✅ Telegram机器人已完全停止，所有资源已清理');
             
         } catch (error) {
-            console.error('❌ 停止机器人时发生错误:', error.message);
+            const context = { function: 'TelegramService.stop', action: 'cleanup' };
+            const errorResult = handleError(error, context);
+            
+            console.error(`❌ 停止机器人时发生错误 [${errorResult.error.type}]:`, error.message);
             // 确保标志被设置
             this.isRunning = false;
-            throw error;
+            
+            // 不重新抛出错误，因为stop()方法应该在失败时也尽量清理
+            // 但记录错误以便调试
         }
     }
 
@@ -97,7 +134,9 @@ class TelegramService {
         ];
 
         this.bot.setMyCommands(commands).catch(error => {
-            console.warn('⚠️  设置命令失败:', error.message);
+            const context = { function: 'setupCommands', action: 'setMyCommands' };
+            handleError(error, context);
+            console.warn(`⚠️  设置命令失败: ${error.message}`);
         });
     }
 
@@ -105,25 +144,50 @@ class TelegramService {
         // 监听文本消息
         this.bot.on('message', (msg) => {
             this.handleMessage(msg).catch(error => {
-                console.error('❌ 处理消息时发生未捕获错误:', error.message);
-                console.error(error.stack);
+                // 处理未捕获的错误（handleMessage内部可能已经处理了，但这里是最后的防线）
+                const context = {
+                    chatId: msg.chat?.id,
+                    userId: msg.from?.id,
+                    messageType: 'text',
+                    function: 'bot.onMessage',
+                    uncaught: true
+                };
+                
+                const errorResult = handleError(error, context);
+                const userFriendlyMessage = getUserMessage(error) || '抱歉，处理消息时出现了问题。请稍后再试。';
                 
                 // 尝试向用户发送错误消息
                 try {
                     if (msg.chat && msg.chat.id) {
-                        this.bot.sendMessage(msg.chat.id, '抱歉，处理消息时出现了问题。请稍后再试。')
-                            .catch(e => console.error('❌ 发送错误消息失败:', e.message));
+                        this.bot.sendMessage(msg.chat.id, userFriendlyMessage)
+                            .catch(sendError => {
+                                console.error('❌ 发送错误消息失败:', sendError.message);
+                            });
                     }
                 } catch (e) {
                     console.error('❌ 发送错误消息时再次失败:', e.message);
                 }
+                
+                console.error(`🛡️  未捕获错误已处理: ${errorResult.error.type}`);
             });
         });
 
         // 监听错误
         this.bot.on('polling_error', (error) => {
-            console.error('❌ Telegram轮询错误:', error.message);
+            const context = {
+                errorCode: error.code,
+                function: 'TelegramPolling',
+                severity: 'HIGH' // 轮询错误通常是严重的
+            };
+            
+            const errorResult = handleError(error, context);
+            console.error(`❌ Telegram轮询错误 [${errorResult.error.type}]:`, error.message);
             console.error('📊 错误代码:', error.code);
+            
+            // 如果是认证错误，可能需要重启或通知管理员
+            if (error.code === 401 || error.message.includes('unauthorized')) {
+                console.error('🔐 Telegram认证失败，请检查BOT_TOKEN');
+            }
         });
 
         // 监听命令
@@ -149,9 +213,54 @@ class TelegramService {
         
         console.log(`📥 收到消息 [${username}:${userId}]:`, userMessage.substring(0, 50) + (userMessage.length > 50 ? '...' : ''));
 
-        // 发送"正在输入"状态
-        this.bot.sendChatAction(chatId, 'typing').catch(() => {});
+        // 立即发送"正在输入"状态（不等待队列）
+        this.bot.sendChatAction(chatId, 'typing').catch(error => {
+            // 静默处理，因为sendChatAction失败不影响核心功能
+            const context = { chatId, userId, function: 'sendChatAction' };
+            handleError(error, context);
+        });
 
+        // 将消息处理加入用户队列（确保串行执行）
+        try {
+            await enqueue(userId, async () => {
+                return await this._processSingleMessage(chatId, userId, username, userMessage, msg);
+            }, {
+                chatId,
+                username,
+                messagePreview: userMessage.substring(0, 50),
+                function: 'handleMessage'
+            });
+            
+        } catch (error) {
+            // 队列处理错误（如超时）
+            const context = {
+                chatId,
+                userId,
+                username,
+                userMessage: userMessage.substring(0, 100),
+                function: 'handleMessage.queue'
+            };
+            
+            const errorResult = handleError(error, context);
+            
+            // 发送用户友好的错误消息
+            const userFriendlyMessage = getUserMessage(error) || '抱歉，处理您的消息时出现了问题。请稍后再试。';
+            
+            try {
+                await this.bot.sendMessage(chatId, userFriendlyMessage);
+                console.log(`📤 队列错误消息已发送给用户: ${errorResult.error.type}`);
+            } catch (sendError) {
+                // 发送错误消息失败，记录但不再尝试
+                console.error('❌ 发送错误消息失败:', sendError.message);
+            }
+        }
+    }
+    
+    /**
+     * 处理单条消息（从队列中调用）
+     * @private
+     */
+    async _processSingleMessage(chatId, userId, username, userMessage, originalMsg) {
         try {
             // 1. 确保用户存在
             const user = await this.ensureUser({
@@ -172,9 +281,10 @@ class TelegramService {
 
             console.log(`💾 用户消息已保存 [ID: ${savedUserMessage.id}]`);
 
-            // 3. 获取最近20条消息作为上下文
-            const recentMessages = await Message.getRecentMessages(user.id, 20);
-            console.log(`📊 获取到最近 ${recentMessages.length} 条消息作为上下文`);
+            // 3. 获取最近消息作为上下文（使用配置）
+            const contextLimit = this.configManager.get('telegram.contextLimit', 20);
+            const recentMessages = await Message.getRecentMessages(user.id, contextLimit);
+            console.log(`📊 获取到最近 ${recentMessages.length} 条消息作为上下文（限制: ${contextLimit}）`);
 
             // 4. 准备AI上下文
             const context = {
@@ -213,26 +323,34 @@ class TelegramService {
             });
 
             console.log(`📤 回复已发送给用户 [${username}:${userId}]`);
-
+            
+            return { success: true, messageId: savedAiMessage.id };
+            
         } catch (error) {
-            console.error('❌ 处理消息时出错:', error.message);
-            console.error(error.stack);
+            // 使用统一错误处理器
+            const context = {
+                chatId,
+                userId,
+                username,
+                userMessage: userMessage.substring(0, 100),
+                function: '_processSingleMessage'
+            };
             
-            // 发送错误消息给用户（确保机器人永不沉默）
-            let errorMessage = '抱歉，处理您的消息时出现了问题。请稍后再试。';
+            const errorResult = handleError(error, context);
             
-            if (error.message.includes('database') || error.message.includes('connection')) {
-                errorMessage = '数据库连接出现问题，请稍后再试。';
-            } else if (error.message.includes('AI') || error.message.includes('api')) {
-                errorMessage = 'AI服务暂时不可用，但我仍然可以记录您的消息。';
-            }
+            // 发送用户友好的错误消息
+            const userFriendlyMessage = getUserMessage(error) || '抱歉，处理您的消息时出现了问题。请稍后再试。';
             
             try {
-                await this.bot.sendMessage(chatId, errorMessage);
-                console.log('📤 错误消息已发送给用户');
+                await this.bot.sendMessage(chatId, userFriendlyMessage);
+                console.log(`📤 处理错误消息已发送给用户: ${errorResult.error.type}`);
             } catch (sendError) {
+                // 发送错误消息失败，记录但不再尝试
                 console.error('❌ 发送错误消息失败:', sendError.message);
             }
+            
+            // 重新抛出错误，让队列知道处理失败
+            throw error;
         }
     }
 
@@ -261,10 +379,19 @@ class TelegramService {
             
             return user;
         } catch (error) {
-            console.error('❌ 确保用户存在时出错:', error.message);
-            console.error('📊 错误代码:', error.code);
+            // 使用统一错误处理器
+            const context = {
+                telegramId: telegramUser.telegram_id,
+                username: telegramUser.username,
+                function: 'ensureUser'
+            };
             
-            // 尝试返回一个默认用户对象，避免整个流程中断
+            const errorResult = handleError(error, context);
+            
+            console.error(`❌ 确保用户存在失败: ${errorResult.error.type}`);
+            
+            // 返回默认用户对象以避免整个流程中断
+            // 注意：这只是一个fallback，实际业务逻辑可能受影响
             return {
                 id: '00000000-0000-0000-0000-000000000000',
                 telegram_id: telegramUser.telegram_id,
@@ -292,21 +419,39 @@ class TelegramService {
             });
             
         } catch (error) {
-            console.error('❌ 处理/start命令时出错:', error.message);
+            const context = {
+                chatId,
+                userId: msg.from.id,
+                username,
+                command: '/start',
+                function: 'handleStartCommand'
+            };
+            
+            handleError(error, context);
+            console.error(`❌ /start命令处理失败: ${error.message}`);
         }
     }
 
     async handleHelpCommand(msg) {
         const chatId = msg.chat.id;
         
-        const helpMessage = `📚 <b>Affirm 显化导师 - 帮助指南</b>\n\n<b>可用命令：</b>\n/start - 开始使用机器人\n/help - 显示此帮助信息\n/history - 查看最近对话历史\n/clear - 清除当前对话历史\n\n<b>使用方法：</b>\n直接发送消息给我，我会热情地回复你。\n我使用最近20条对话作为上下文，让你有连贯的体验。\n\n<b>功能：</b>\n• 记录你的想法和目标\n• 提供积极的肯定语\n• 协助思维重塑\n• 提供个性化的建议\n\n<b>注意事项：</b>\n• 所有对话都会被安全存储\n• 你可以随时清除历史记录\n• AI服务可能偶尔不可用\n\n有问题随时联系！✨`;
+        const contextLimit = this.configManager.get('telegram.contextLimit', 20);
+        const helpMessage = `📚 <b>Affirm 显化导师 - 帮助指南</b>\n\n<b>可用命令：</b>\n/start - 开始使用机器人\n/help - 显示此帮助信息\n/history - 查看最近对话历史\n/clear - 清除当前对话历史\n/archive_now - 归档今日对话到Notion\n\n<b>使用方法：</b>\n直接发送消息给我，我会热情地回复你。\n我使用最近${contextLimit}条对话作为上下文，让你有连贯的体验。\n\n<b>功能：</b>\n• 记录你的想法和目标\n• 提供积极的肯定语\n• 协助思维重塑\n• 提供个性化的建议\n• 对话归档到Notion（需配置）\n\n<b>注意事项：</b>\n• 所有对话都会被安全存储\n• 你可以随时清除历史记录\n• AI服务可能偶尔不可用\n\n有问题随时联系！✨`;
         
         try {
             await this.bot.sendMessage(chatId, helpMessage, {
                 parse_mode: 'HTML'
             });
         } catch (error) {
-            console.error('❌ 处理/help命令时出错:', error.message);
+            const context = {
+                chatId,
+                userId: msg.from?.id,
+                command: '/help',
+                function: 'handleHelpCommand'
+            };
+            
+            handleError(error, context);
+            console.error(`❌ /help命令处理失败: ${error.message}`);
         }
     }
 
@@ -321,8 +466,9 @@ class TelegramService {
                 username: msg.from.username || msg.from.first_name || '用户'
             });
             
-            // 获取最近10条消息
-            const recentMessages = await Message.getRecentMessages(user.id, 10);
+            // 获取最近消息（使用配置）
+            const historyLimit = this.configManager.get('telegram.historyLimit', 10);
+            const recentMessages = await Message.getRecentMessages(user.id, historyLimit);
             
             if (recentMessages.length === 0) {
                 await this.bot.sendMessage(chatId, '📭 你还没有任何对话历史。发送消息开始对话吧！');
@@ -349,8 +495,23 @@ class TelegramService {
             });
             
         } catch (error) {
-            console.error('❌ 处理/history命令时出错:', error.message);
-            await this.bot.sendMessage(chatId, '抱歉，获取历史记录时出现问题。请稍后再试。');
+            const context = {
+                chatId,
+                userId,
+                username: msg.from.username || msg.from.first_name || '用户',
+                command: '/history',
+                function: 'handleHistoryCommand'
+            };
+            
+            const errorResult = handleError(error, context);
+            const userFriendlyMessage = getUserMessage(error) || '抱歉，获取历史记录时出现问题。请稍后再试。';
+            
+            try {
+                await this.bot.sendMessage(chatId, userFriendlyMessage);
+                console.error(`❌ /history命令处理失败: ${errorResult.error.type}`);
+            } catch (sendError) {
+                console.error('❌ 发送错误消息失败:', sendError.message);
+            }
         }
     }
 
@@ -372,8 +533,23 @@ class TelegramService {
             });
             
         } catch (error) {
-            console.error('❌ 处理/clear命令时出错:', error.message);
-            await this.bot.sendMessage(chatId, '抱歉，处理清除命令时出现问题。请稍后再试。');
+            const context = {
+                chatId,
+                userId,
+                username: msg.from.username || msg.from.first_name || '用户',
+                command: '/clear',
+                function: 'handleClearCommand'
+            };
+            
+            const errorResult = handleError(error, context);
+            const userFriendlyMessage = getUserMessage(error) || '抱歉，处理清除命令时出现问题。请稍后再试。';
+            
+            try {
+                await this.bot.sendMessage(chatId, userFriendlyMessage);
+                console.error(`❌ /clear命令处理失败: ${errorResult.error.type}`);
+            } catch (sendError) {
+                console.error('❌ 发送错误消息失败:', sendError.message);
+            }
         }
     }
     
@@ -386,7 +562,11 @@ class TelegramService {
         
         try {
             // 发送"正在处理"状态
-            this.bot.sendChatAction(chatId, 'typing').catch(() => {});
+            this.bot.sendChatAction(chatId, 'typing').catch(error => {
+                // 静默处理，sendChatAction失败不影响归档功能
+                const context = { chatId, userId, function: 'sendChatAction', command: '/archive_now' };
+                handleError(error, context);
+            });
             
             // 确保用户存在
             const user = await this.ensureUser({
@@ -423,9 +603,20 @@ class TelegramService {
                     today
                 );
             } catch (notionError) {
-                console.error('❌ Notion归档失败:', notionError.message);
-                // Notion归档失败不影响主流程，只发送错误消息
-                await this.bot.sendMessage(chatId, `❌ 归档到Notion时出现错误:\n\n<code>${notionError.message}</code>\n\n请检查Notion配置或稍后再试。`, {
+                // Notion归档失败不影响主流程，使用错误处理器记录
+                const context = {
+                    chatId,
+                    userId,
+                    username,
+                    dailyMessageCount: dailyMessages.length,
+                    notionConfigPresent: !!process.env.NOTION_TOKEN && process.env.NOTION_TOKEN !== 'your_notion_integration_token',
+                    function: 'notionService.archiveDailyMessages'
+                };
+                
+                const errorResult = handleError(notionError, context);
+                const userFriendlyMessage = getUserMessage(notionError) || `归档到Notion时出现错误。请检查Notion配置或稍后再试。`;
+                
+                await this.bot.sendMessage(chatId, userFriendlyMessage, {
                     parse_mode: 'HTML'
                 });
                 return;
@@ -443,13 +634,24 @@ class TelegramService {
             }
             
         } catch (error) {
-            console.error('❌ 处理/archive_now命令时出错:', error.message);
-            console.error(error.stack);
+            const context = {
+                chatId,
+                userId,
+                username,
+                command: '/archive_now',
+                function: 'handleArchiveCommand',
+                hasNotionConfig: !!process.env.NOTION_TOKEN && process.env.NOTION_TOKEN !== 'your_notion_integration_token'
+            };
             
-            // 发送通用错误消息（不暴露内部细节）
-            await this.bot.sendMessage(chatId, '抱歉，处理归档命令时出现问题。请稍后再试或检查配置。', {
-                parse_mode: 'HTML'
-            });
+            const errorResult = handleError(error, context);
+            const userFriendlyMessage = getUserMessage(error) || '抱歉，处理归档命令时出现问题。请稍后再试或检查配置。';
+            
+            try {
+                await this.bot.sendMessage(chatId, userFriendlyMessage);
+                console.error(`❌ /archive_now命令处理失败: ${errorResult.error.type}`);
+            } catch (sendError) {
+                console.error('❌ 发送错误消息失败:', sendError.message);
+            }
         }
     }
 }

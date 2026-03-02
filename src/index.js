@@ -4,6 +4,8 @@
  * Telegram机器人 + AI助手
  */
 require('dotenv').config();
+
+
 const TelegramService = require('./services/telegram');
 const config = require('./config');
 
@@ -52,10 +54,35 @@ async function initialize() {
 process.on('uncaughtException', (error) => {
     console.error('⚠️  未捕获的异常:', error.message);
     console.error(error.stack);
+    
+    // 如果是JSON解析错误，尝试获取更多上下文
+    if (error.message.includes('JSON') || error.message.includes('parse') || error.name === 'SyntaxError') {
+        console.error('🔍 JSON解析错误详细信息:');
+        console.error(`   错误名称: ${error.name}`);
+        console.error(`   错误消息: ${error.message}`);
+        
+        // 尝试从错误堆栈中提取更多信息
+        const stackLines = error.stack.split('\n');
+        console.error(`   错误堆栈:`, stackLines.slice(0, 5).join('\n    '));
+        
+        // 如果错误有额外的属性，打印它们
+        for (const key in error) {
+            if (key !== 'message' && key !== 'stack' && key !== 'name') {
+                try {
+                    console.error(`   错误属性 ${key}: ${JSON.stringify(error[key])}`);
+                } catch (e) {
+                    console.error(`   错误属性 ${key}: [不可序列化]`);
+                }
+            }
+        }
+    }
 });
 
 process.on('unhandledRejection', (reason, promise) => {
     console.error('⚠️  未处理的Promise拒绝:', reason);
+    if (reason instanceof Error) {
+        console.error('   拒绝堆栈:', reason.stack);
+    }
 });
 
 // 启动应用

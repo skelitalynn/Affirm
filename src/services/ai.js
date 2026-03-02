@@ -62,6 +62,20 @@ class AIService {
             return response.trim();
         } catch (error) {
             console.error('❌ AI生成回复失败:', error.message);
+            console.error('🔍 AI错误堆栈:', error.stack);
+            
+            // 如果是OpenAI API错误，尝试提取响应信息
+            if (error.response) {
+                console.error('📡 AI响应状态:', error.response.status);
+                console.error('📡 AI响应头:', JSON.stringify(error.response.headers));
+                if (error.response.data) {
+                    try {
+                        console.error('📡 AI响应数据:', JSON.stringify(error.response.data, null, 2));
+                    } catch (e) {
+                        console.error('📡 AI响应数据（原始）:', String(error.response.data).substring(0, 500));
+                    }
+                }
+            }
             
             // 返回友好的错误消息，确保机器人永不沉默
             if (error.message.includes('rate limit') || error.message.includes('rate_limit')) {

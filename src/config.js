@@ -16,7 +16,10 @@ const config = {
     telegram: {
         botToken: process.env.TELEGRAM_BOT_TOKEN,
         webhookUrl: process.env.TELEGRAM_WEBHOOK_URL || '',
-        adminIds: process.env.TELEGRAM_ADMIN_IDS ? process.env.TELEGRAM_ADMIN_IDS.split(',') : []
+        adminIds: process.env.TELEGRAM_ADMIN_IDS ? process.env.TELEGRAM_ADMIN_IDS.split(',') : [],
+        contextLimit: parseInt(process.env.TELEGRAM_CONTEXT_LIMIT) || 20,
+        historyLimit: parseInt(process.env.TELEGRAM_HISTORY_LIMIT) || 10,
+        typingDelayMs: parseInt(process.env.TELEGRAM_TYPING_DELAY_MS) || 500
     },
     
     // Notion配置
