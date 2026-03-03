@@ -14,10 +14,10 @@ source /root/projects/Affirm/.env
 echo "1. 配置Notion API连接..."
 
 # 创建Notion配置目录
-mkdir -p /root/projects/Affirm/notion
+mkdir -p /root/projects/Affirm/skills/notion
 
 # 创建Notion API配置文件
-cat > /root/projects/Affirm/notion/config.js << 'EOF'
+cat > /root/projects/Affirm/skills/notion/config.js << 'EOF'
 // Notion API配置
 module.exports = {
     // Notion API密钥
@@ -55,7 +55,7 @@ EOF
 # 2. 实现Notion页面创建功能
 echo "2. 实现Notion页面创建功能..."
 
-cat > /root/projects/Affirm/notion/client.js << 'EOF'
+cat > /root/projects/Affirm/skills/notion/client.js << 'EOF'
 // Notion API客户端
 const { Client } = require('@notionhq/client');
 const config = require('./config');
@@ -200,7 +200,7 @@ EOF
 # 3. 创建每日归档定时任务
 echo "3. 创建每日归档定时任务..."
 
-cat > /root/projects/Affirm/notion/archiver.js << 'EOF'
+cat > /root/projects/Affirm/skills/notion/archiver.js << 'EOF'
 // 每日归档管理器
 const NotionClient = require('./client');
 const config = require('./config');
@@ -458,7 +458,7 @@ EOF
 # 4. 创建归档状态跟踪
 echo "4. 创建归档状态跟踪..."
 
-cat > /root/projects/Affirm/notion/tracker.js << 'EOF'
+cat > /root/projects/Affirm/skills/notion/tracker.js << 'EOF'
 // 归档状态跟踪器
 class ArchiveTracker {
     constructor() {
@@ -644,7 +644,7 @@ EOF
 # 5. 创建失败重试机制
 echo "5. 创建失败重试机制..."
 
-cat > /root/projects/Affirm/notion/retry.js << 'EOF'
+cat > /root/projects/Affirm/skills/notion/retry.js << 'EOF'
 // 失败重试机制
 class RetryManager {
     constructor(maxRetries = 3, baseDelay = 1000) {
@@ -873,7 +873,7 @@ EOF
 # 7. 测试归档流程（模拟测试）
 echo "7. 测试归档流程..."
 
-cat > /root/projects/Affirm/notion/test-archive.js << 'EOF'
+cat > /root/projects/Affirm/skills/notion/test-archive.js << 'EOF'
 // Notion归档测试脚本
 const DailyArchiver = require('./archiver');
 const ArchiveTracker = require('./tracker');
@@ -947,7 +947,7 @@ EOF
 # 8. 优化归档性能（配置建议）
 echo "8. 优化归档性能..."
 
-cat > /root/projects/Affirm/notion/performance.md << 'EOF'
+cat > /root/projects/Affirm/skills/notion/performance.md << 'EOF'
 # Notion归档性能优化指南
 
 ## 1. 批量处理
@@ -1035,32 +1035,32 @@ cat > /root/projects/Affirm/tests/notion-integration.test.js << 'EOF'
 
 describe('Notion集成', () => {
     test('配置加载', () => {
-        const config = require('../notion/config');
+        const config = require('../skills/notion/config');
         expect(config).toBeDefined();
         expect(typeof config.apiKey).toBe('string');
     });
 
     test('客户端初始化', () => {
-        const NotionClient = require('../notion/client');
+        const NotionClient = require('../skills/notion/client');
         const client = new NotionClient();
         expect(client).toBeInstanceOf(NotionClient);
     });
 
     test('归档器创建', () => {
-        const DailyArchiver = require('../notion/archiver');
+        const DailyArchiver = require('../skills/notion/archiver');
         const archiver = new DailyArchiver();
         expect(archiver).toBeInstanceOf(DailyArchiver);
     });
 
     test('重试管理器', () => {
-        const RetryManager = require('../notion/retry');
+        const RetryManager = require('../skills/notion/retry');
         const retry = new RetryManager();
         expect(retry.maxRetries).toBe(3);
         expect(retry.baseDelay).toBe(1000);
     });
 
     test('状态跟踪', () => {
-        const ArchiveTracker = require('../notion/tracker');
+        const ArchiveTracker = require('../skills/notion/tracker');
         const tracker = new ArchiveTracker();
         const stats = tracker.getStats();
         expect(stats.totalArchives).toBe(0);
@@ -1072,14 +1072,14 @@ echo "=================================="
 echo "✅ Day 4任务完成：Notion集成基础框架已创建"
 echo ""
 echo "📁 生成的文件："
-echo "  - notion/config.js           Notion配置"
-echo "  - notion/client.js           Notion API客户端"
-echo "  - notion/archiver.js         每日归档管理器"
-echo "  - notion/tracker.js          归档状态跟踪"
-echo "  - notion/retry.js            失败重试机制"
+echo "  - skills/notion/config.js           Notion配置"
+echo "  - skills/notion/client.js           Notion API客户端"
+echo "  - skills/notion/archiver.js         每日归档管理器"
+echo "  - skills/notion/tracker.js          归档状态跟踪"
+echo "  - skills/notion/retry.js            失败重试机制"
 echo "  - src/notion/config-ui.js    配置界面（占位符）"
-echo "  - notion/test-archive.js     测试脚本"
-echo "  - notion/performance.md      性能优化指南"
+echo "  - skills/notion/test-archive.js     测试脚本"
+echo "  - skills/notion/performance.md      性能优化指南"
 echo "  - tests/notion-integration.test.js 集成测试"
 echo ""
 echo "⚠️  注意："
@@ -1089,6 +1089,6 @@ echo "  3. 实际归档功能需要连接数据库获取对话数据"
 echo ""
 echo "🚀 下一步："
 echo "  1. 配置Notion API密钥"
-echo "  2. 运行测试: node notion/test-archive.js"
+echo "  2. 运行测试: node skills/notion/test-archive.js"
 echo "  3. 集成到主应用程序中"
 echo "=================================="

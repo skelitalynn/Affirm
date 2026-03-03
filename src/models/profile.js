@@ -14,7 +14,10 @@ class Profile {
             VALUES ($1, $2, $3, $4)
             RETURNING *
         `;
-        const values = [user_id, goals, status, JSON.stringify(preferences || {})];
+        const preferencesValue = (preferences === undefined || preferences === null)
+            ? null
+            : JSON.stringify(preferences);
+        const values = [user_id, goals, status, preferencesValue];
         
         try {
             const result = await db.query(query, values);

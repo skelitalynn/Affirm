@@ -13,7 +13,11 @@ class User {
         
         try {
             const result = await db.query(query, values);
-            return result.rows[0];
+            const row = result.rows[0];
+            if (row && row.telegram_id != null) {
+                row.telegram_id = Number(row.telegram_id);
+            }
+            return row;
         } catch (error) {
             if (error.code === '23505') {
                 return await this.findByTelegramId(telegram_id);
@@ -25,7 +29,12 @@ class User {
     static async findByTelegramId(telegramId) {
         const query = 'SELECT * FROM users WHERE telegram_id = $1';
         const result = await db.query(query, [telegramId]);
-        return result.rows[0] || null;
+        const row = result.rows[0];
+        if (!row) return null;
+        if (row.telegram_id != null) {
+            row.telegram_id = Number(row.telegram_id);
+        }
+        return row;
     }
 
     static async update(telegramId, updates) {
@@ -57,7 +66,11 @@ class User {
         if (result.rows.length === 0) {
             throw new Error('用户不存在');
         }
-        return result.rows[0];
+        const row = result.rows[0];
+        if (row.telegram_id != null) {
+            row.telegram_id = Number(row.telegram_id);
+        }
+        return row;
     }
 
     static async findAll(limit = 100, offset = 0) {
@@ -67,7 +80,12 @@ class User {
             LIMIT $1 OFFSET $2
         `;
         const result = await db.query(query, [limit, offset]);
-        return result.rows;
+        return result.rows.map(row => {
+            if (row.telegram_id != null) {
+                row.telegram_id = Number(row.telegram_id);
+            }
+            return row;
+        });
     }
 
     static async delete(telegramId) {

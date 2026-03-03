@@ -134,8 +134,12 @@ describe('Profile Model', () => {
         });
 
         it('应该创建新画像（如果不存在）', async () => {
-            const newUserId = '00000000-0000-0000-0000-000000000001';
-            const profile = await Profile.findOrCreate(newUserId, {
+            // 为findOrCreate创建一个真实存在的用户，以满足外键约束
+            const newUser = await User.create({
+                telegram_id: testTelegramId + 3,
+                username: 'findorcreate_new_user'
+            });
+            const profile = await Profile.findOrCreate(newUser.id, {
                 goals: '新创建的目标',
                 status: 'pending',
                 preferences: { test: true }
@@ -147,7 +151,8 @@ describe('Profile Model', () => {
             expect(profile.preferences).toEqual({ test: true });
 
             // 清理
-            await Profile.delete(newUserId);
+            await Profile.delete(newUser.id);
+            await User.delete(testTelegramId + 3);
         });
     });
 

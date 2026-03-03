@@ -29,11 +29,17 @@ function parseDatabaseConfig() {
 class Database {
     constructor() {
         const dbConfig = parseDatabaseConfig();
-        console.log('🔧 数据库配置:', { 
-            host: dbConfig.host || 'from-url',
-            database: dbConfig.database || 'from-url',
-            user: dbConfig.user || 'from-url'
-        });
+        if (process.env.NODE_ENV !== 'test') {
+            console.log('🔧 数据库配置:', {
+                host: dbConfig.host || 'from-url',
+                database: dbConfig.database || 'from-url',
+                user: dbConfig.user || 'from-url'
+            });
+        }
+
+        if (process.env.NODE_ENV === 'test') {
+            dbConfig.allowExitOnIdle = true;
+        }
         
         this.pool = new Pool(dbConfig);
         // pgvector类型注册暂时禁用
