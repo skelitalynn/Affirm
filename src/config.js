@@ -29,15 +29,40 @@ const config = {
         databaseId: process.env.NOTION_DATABASE_ID
     },
     
-    // AI模型配置 - 使用DeepSeek
-    ai: {
-        provider: 'deepseek',
-        apiKey: process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY, // 兼容现有配置
-        baseURL: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1',
-        model: process.env.MODEL_NAME || 'deepseek-reasoner',
-        temperature: 0.7,
-        maxTokens: 1000
-    },
+    // AI模型配置 - 支持DeepSeek和Claude（通过OpenAI兼容接口）
+    ai: (() => {
+        const provider = (process.env.AI_PROVIDER || 'deepseek').toLowerCase();
+
+        if (provider === 'claude') {
+            // Claude 通过 AiGoCode 的 OpenAI 兼容接口
+            const apiKey = process.env.CLAUDE_API_KEY || process.env.OPENAI_API_KEY;
+            const baseURL = process.env.CLAUDE_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.aigocode.com/v1';
+            const model = process.env.CLAUDE_MODEL || process.env.MODEL_NAME || 'claude-sonnet-4-5-latest';
+
+            return {
+                provider: 'claude',
+                apiKey,
+                baseURL,
+                model,
+                temperature: 0.7,
+                maxTokens: 1000
+            };
+        }
+
+        // 默认使用 DeepSeek
+        const apiKey = process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY; // 兼容现有配置
+        const baseURL = process.env.DEEPSEEK_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.deepseek.com/v1';
+        const model = process.env.MODEL_NAME || 'deepseek-reasoner';
+
+        return {
+            provider: 'deepseek',
+            apiKey,
+            baseURL,
+            model,
+            temperature: 0.7,
+            maxTokens: 1000
+        };
+    })(),
     
     // 应用配置
     app: {
@@ -64,8 +89,8 @@ requiredEnvVars.forEach(varName => {
 });
 
 // 验证AI配置
-if (!process.env.DEEPSEEK_API_KEY && !process.env.OPENAI_API_KEY) {
-    console.warn('⚠️  未配置AI API密钥 (需要DEEPSEEK_API_KEY或OPENAI_API_KEY)');
+if (!process.env.DEEPSEEK_API_KEY && !process.env.OPENAI_API_KEY && !process.env.CLAUDE_API_KEY) {
+    console.warn('⚠️  未配置AI API密钥 (需要DEEPSEEK_API_KEY或OPENAI_API_KEY或CLAUDE_API_KEY)');
 }
 
 module.exports = config;

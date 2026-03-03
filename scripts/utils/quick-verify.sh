@@ -57,7 +57,8 @@ fi
 
 # 3. 检查环境变量
 echo -e "\n3. 检查环境变量配置..."
-required_vars=("DB_URL" "TELEGRAM_BOT_TOKEN" "OPENAI_API_KEY" "OPENAI_BASE_URL" "GITHUB_USERNAME" "GITHUB_REPO")
+# 只做基础必需检查，其余由 verify-environment.js 细分
+required_vars=("DB_URL" "TELEGRAM_BOT_TOKEN" "AI_PROVIDER" "GITHUB_USERNAME" "GITHUB_REPO")
 source .env 2>/dev/null
 
 missing_vars=0

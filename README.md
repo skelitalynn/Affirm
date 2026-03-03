@@ -107,10 +107,22 @@ DB_URL=postgresql://user:password@localhost:5432/dbname
 # Telegram
 TELEGRAM_BOT_TOKEN=your_bot_token
 
-# AI模型
-OPENAI_API_KEY=your_api_key
-OPENAI_BASE_URL=https://api.ikuncode.cc/v1
-MODEL_NAME=gpt-5.3-codex
+# AI Provider（可选: deepseek 或 claude）
+AI_PROVIDER=deepseek
+
+# DeepSeek配置（优先使用）
+DEEPSEEK_API_KEY=your_deepseek_api_key_here
+DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+
+# Claude配置（通过 AiGoCode OpenAI 兼容接口）
+CLAUDE_API_KEY=your_claude_api_key_here
+CLAUDE_BASE_URL=https://api.aigocode.com/v1
+CLAUDE_MODEL=claude-sonnet-4-5-latest
+
+# 兼容现有OpenAI配置（可选）
+OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_BASE_URL=${DEEPSEEK_BASE_URL}
+MODEL_NAME=deepseek-reasoner
 
 # GitHub
 GITHUB_USERNAME=your_username

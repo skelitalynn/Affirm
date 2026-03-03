@@ -26,38 +26,63 @@ async function testTelegram() {
     }
 }
 
-async function testCodexAPI() {
-    console.log('\n2. 测试Codex 5.3 API连接...');
+async function testAIAPI() {
+    console.log('\n2. 测试AI模型API连接...');
+
+    const provider = (process.env.AI_PROVIDER || 'deepseek').toLowerCase();
+
+    // 根据Provider选择不同的配置
+    let apiKey;
+    let baseURL;
+    let model;
+
+    if (provider === 'claude') {
+        apiKey = process.env.CLAUDE_API_KEY || process.env.OPENAI_API_KEY;
+        baseURL = process.env.CLAUDE_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.aigocode.com/v1';
+        model = process.env.CLAUDE_MODEL || process.env.MODEL_NAME || 'claude-sonnet-4-5-latest';
+    } else {
+        // 默认DeepSeek
+        apiKey = process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY;
+        baseURL = process.env.DEEPSEEK_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.deepseek.com/v1';
+        model = process.env.MODEL_NAME || 'deepseek-reasoner';
+    }
+
+    if (!apiKey) {
+        console.log(`❌ AI API密钥未配置 (provider=${provider})`);
+        return false;
+    }
+
     try {
-        const response = await fetch(`${process.env.OPENAI_BASE_URL}/chat/completions`, {
+        const response = await fetch(`${baseURL}/chat/completions`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+                'Authorization': `Bearer ${apiKey}`
             },
             body: JSON.stringify({
-                model: process.env.MODEL_NAME || 'gpt-5.3-codex',
+                model: model,
                 messages: [{ role: 'user', content: 'Hello' }],
                 max_tokens: 10
             })
         });
         
         const data = await response.json();
-        
+
         if (data.choices && data.choices[0]) {
-            console.log(`✅ Codex API连接成功:`);
-            console.log(`   🤖 模型: ${process.env.MODEL_NAME}`);
+            console.log(`✅ AI API连接成功:`);
+            console.log(`   🤖 Provider: ${provider}`);
+            console.log(`   🤖 模型: ${model}`);
             console.log(`   💬 响应: "${data.choices[0].message.content}"`);
             return true;
         } else if (data.error) {
-            console.log(`❌ Codex API错误: ${data.error.message}`);
+            console.log(`❌ AI API错误: ${data.error.message}`);
             return false;
         } else {
-            console.log(`❌ Codex API未知响应:`, JSON.stringify(data).substring(0, 200));
+            console.log(`❌ AI API未知响应:`, JSON.stringify(data).substring(0, 200));
             return false;
         }
     } catch (error) {
-        console.log(`❌ Codex API连接错误: ${error.message}`);
+        console.log(`❌ AI API连接错误: ${error.message}`);
         return false;
     }
 }
@@ -142,9 +167,9 @@ async function checkRequiredEnvVars() {
     console.log('\n6. 检查必需环境变量...');
     const requiredVars = [
         'DB_URL',
-        'TELEGRAM_BOT_TOKEN', 
-        'OPENAI_API_KEY',
-        'OPENAI_BASE_URL',
+        'TELEGRAM_BOT_TOKEN',
+        // AI相关：根据Provider不同，后续会在testAIAPI中进一步验证
+        'AI_PROVIDER',
         'GITHUB_USERNAME',
         'GITHUB_REPO'
     ];
@@ -170,7 +195,7 @@ async function runAllTests() {
     
     const results = {
         telegram: await testTelegram(),
-        codex: await testCodexAPI(),
+        ai: await testAIAPI(),
         github: await testGitHubSSH(),
         openclaw: await testOpenClaw(),
         database: await checkDatabaseConfig(),
@@ -180,7 +205,7 @@ async function runAllTests() {
     console.log('\n' + '=' .repeat(50));
     console.log('📊 验证结果汇总:');
     console.log(`   📱 Telegram: ${results.telegram ? '✅' : '❌'}`);
-    console.log(`   🤖 Codex API: ${results.codex ? '✅' : '❌'}`);
+    console.log(`   🤖 AI API: ${results.ai ? '✅' : '❌'}`);
     console.log(`   🐙 GitHub SSH: ${results.github ? '✅' : '❌'}`);
     console.log(`   ⚡ OpenClaw: ${results.openclaw ? '✅' : '❌'}`);
     console.log(`   🗄️  数据库配置: ${results.database ? '✅' : '❌'}`);
