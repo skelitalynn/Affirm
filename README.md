@@ -147,9 +147,3 @@ GITHUB_REPO=Affirm
 ## 📄 许可证
 
 MIT License - 详见 LICENSE 文件
-
----
-**项目状态**: Day 1 ✅ 完成 | 总体进度: 14.3%
-**最新更新**: 2026-02-25
-**维护者**: 小苹果 🍎
-**GitHub**: https://github.com/skelitalynn/Affirm
