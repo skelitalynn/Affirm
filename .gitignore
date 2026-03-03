@@ -4,14 +4,19 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# 环境变量
+# 环境变量（允许 .env.example 提交）
 .env
-.env.local
-.env.*.local
+.env.production
+.env.*
+!.env.example
 
 # 日志文件
 *.log
 logs/
+dev.log
+
+# 备份文件
+*.backup
 
 # 运行时数据
 *.pid
