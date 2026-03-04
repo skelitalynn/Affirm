@@ -22,11 +22,15 @@ const config = {
         typingDelayMs: parseInt(process.env.TELEGRAM_TYPING_DELAY_MS) || 500
     },
     
-    // Notion配置
+    // Notion配置 - 兼容新旧变量名
     notion: {
+        // 旧变量名（保持向后兼容）
         token: process.env.NOTION_TOKEN,
         parentPageId: process.env.NOTION_PARENT_PAGE_ID,
-        databaseId: process.env.NOTION_DATABASE_ID
+        databaseId: process.env.NOTION_DATABASE_ID,
+        // 新变量名（符合OpenClaw Notion Skill规范）
+        apiKey: process.env.NOTION_API_KEY || process.env.NOTION_TOKEN,
+        skillDatabaseId: process.env.NOTION_DATABASE_ID
     },
     
     // AI模型配置 - 支持DeepSeek和Claude（通过OpenAI兼容接口）

@@ -1,10 +1,10 @@
-// Notion服务 - 基于OpenClaw Notion Skill的归档服务（修复版）
-const path = require('path');
+// Notion服务 - 基于OpenClaw Notion Skill的归档服务
+const NotionClient = require('../../skills/notion/client');
 const config = require('../config');
 
 /**
- * Notion服务（修复版）
- * 修复技能集成中的配置缓存和路径问题
+ * Notion服务
+ * 基于OpenClaw Notion Skill的归档服务
  */
 class NotionService {
     constructor() {
@@ -17,7 +17,7 @@ class NotionService {
     }
     
     /**
-     * 初始化Notion客户端（修复配置缓存问题）
+     * 初始化Notion客户端（懒加载）
      */
     async initialize() {
         if (this.isInitialized && this.client) {
@@ -36,18 +36,12 @@ class NotionService {
         try {
             console.log('🔧 初始化Notion Skill客户端...');
             
-            // 关键修复：在加载技能模块前设置环境变量
-            process.env.NOTION_API_KEY = this.notionConfig.apiKey;
-            process.env.NOTION_DATABASE_ID = this.notionConfig.skillDatabaseId;
-            
-            // 清除技能模块缓存，确保读取最新环境变量
-            this._clearSkillModuleCache();
-            
-            // 动态加载NotionClient（避免缓存问题）
-            const NotionClient = this._loadNotionClient();
-            
             // 创建NotionClient实例
             this.client = new NotionClient();
+            
+            // NotionClient需要环境变量，手动设置
+            process.env.NOTION_API_KEY = this.notionConfig.apiKey;
+            process.env.NOTION_DATABASE_ID = this.notionConfig.skillDatabaseId;
             
             // 初始化客户端
             this.client.initialize();
@@ -56,88 +50,7 @@ class NotionService {
             console.log('✅ Notion服务初始化完成');
         } catch (error) {
             console.error('❌ Notion服务初始化失败:', error.message);
-            
-            // 提供详细的错误诊断
-            if (error.message.includes('MODULE_NOT_FOUND')) {
-                console.error('🔍 模块找不到，检查技能文件路径:');
-                console.error(`   当前目录: ${__dirname}`);
-                console.error(`   技能路径: ${path.join(__dirname, '../../skills/notion')}`);
-                console.error('💡 建议: 确保skills/notion目录存在且包含client.js文件');
-            }
-            
-            if (error.message.includes('未配置') || error.message.includes('your_notion')) {
-                console.error('🔍 配置检查:');
-                console.error(`   API密钥: ${this.notionConfig.apiKey ? '已设置' : '未设置'}`);
-                console.error(`   数据库ID: ${this.notionConfig.skillDatabaseId ? '已设置' : '未设置'}`);
-                console.error('💡 建议: 在.env文件中设置NOTION_API_KEY和NOTION_DATABASE_ID');
-            }
-            
             throw error;
-        }
-    }
-    
-    /**
-     * 清除技能模块缓存
-     * @private
-     */
-    _clearSkillModuleCache() {
-        try {
-            // 清除配置模块缓存
-            const configPath = require.resolve('../../skills/notion/config');
-            delete require.cache[configPath];
-            console.log('🧹 已清除技能配置缓存');
-        } catch (error) {
-            console.warn('⚠️  清除配置缓存失败:', error.message);
-        }
-        
-        try {
-            // 清除客户端模块缓存
-            const clientPath = require.resolve('../../skills/notion/client');
-            delete require.cache[clientPath];
-            console.log('🧹 已清除技能客户端缓存');
-        } catch (error) {
-            console.warn('⚠️  清除客户端缓存失败:', error.message);
-        }
-    }
-    
-    /**
-     * 动态加载NotionClient（避免模块缓存问题）
-     * @private
-     */
-    _loadNotionClient() {
-        try {
-            // 使用绝对路径确保正确加载
-            const clientPath = path.join(__dirname, '../../skills/notion/client.js');
-            
-            // 清除模块缓存
-            delete require.cache[require.resolve(clientPath)];
-            
-            // 加载模块
-            const NotionClient = require(clientPath);
-            
-            // 验证模块导出
-            if (typeof NotionClient !== 'function') {
-                throw new Error('NotionClient模块未正确导出类');
-            }
-            
-            console.log('📦 NotionClient模块加载成功');
-            return NotionClient;
-        } catch (error) {
-            console.error('❌ 加载NotionClient失败:', error.message);
-            console.error(`   尝试的路径: ${path.join(__dirname, '../../skills/notion/client.js')}`);
-            console.error(`   当前工作目录: ${process.cwd()}`);
-            
-            // 尝试备用路径
-            try {
-                console.log('🔄 尝试备用加载路径...');
-                const altPath = './skills/notion/client';
-                delete require.cache[require.resolve(altPath)];
-                const NotionClient = require(altPath);
-                console.log('✅ 通过备用路径加载成功');
-                return NotionClient;
-            } catch (altError) {
-                throw new Error(`无法加载NotionClient: ${error.message}, 备用路径也失败: ${altError.message}`);
-            }
         }
     }
     
@@ -225,11 +138,6 @@ class NotionService {
                 error.message.includes('auth') ||
                 error.message.includes('permission')) {
                 throw new Error(`Notion配置错误: ${error.message}. 请检查NOTION_API_KEY和NOTION_DATABASE_ID配置。`);
-            }
-            
-            // 检查是否为数据库权限错误
-            if (error.message.includes('database') || error.message.includes('parent')) {
-                throw new Error(`数据库权限错误: ${error.message}. 请确保数据库已分享给集成。`);
             }
             
             throw error;
