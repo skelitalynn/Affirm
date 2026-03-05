@@ -1,31 +1,35 @@
 // Telegram机器人服务
 const TelegramBot = require('node-telegram-bot-api');
+const express = require('express');
 const User = require('../models/user');
 const Message = require('../models/message');
 const Knowledge = require('../models/knowledge');
 const AIService = require('./ai');
 const NotionService = require('./notion');
+const config = require('../config');
 const configManager = require('../config/manager'); // Day 3+ 配置管理
-const { 
-    errorHandler, 
-    DatabaseError, 
-    AIError, 
+const {
+    errorHandler,
+    DatabaseError,
+    AIError,
     NetworkError,
     TelegramError,
     handleError,
     getUserMessage,
-    withRetry 
+    withRetry
 } = require('../utils/error-handler'); // Day 3+ 错误处理
-const { messageQueue, enqueue } = require('../utils/message-queue'); // Day 3+ 并发控制
+const { messageQueue } = require('../utils/message-queue'); // Phase 2: BullMQ 队列
 
 class TelegramService {
-    constructor(config) {
-        this.config = config; // 保持向后兼容
+    constructor(cfg) {
+        this.config = cfg; // 保持向后兼容
         this.bot = null;
         this.aiService = null;
         this.notionService = null; // Day 4: Notion归档服务
         this.isRunning = false;
         this.configManager = configManager; // Day 3+ 配置管理
+        this.webhookServer = null;   // Phase 2: Webhook HTTP 服务器
+        this.isWebhookMode = false;  // Phase 2: 当前接入模式标志
     }
 
     async start() {
@@ -43,42 +47,122 @@ class TelegramService {
         // 初始化Notion归档服务（Day 4）
         this.notionService = new NotionService();
 
-        // 创建Telegram机器人
-        this.bot = new TelegramBot(token, { polling: true });
-        
+        // Phase 2: 根据配置选择接入模式
+        this.isWebhookMode = config.webhook.enabled;
+
+        if (this.isWebhookMode) {
+            // Webhook 模式：不开启轮询，由 Express 接收 Telegram 推送
+            this.bot = new TelegramBot(token);
+            await this._startWebhookServer();
+        } else {
+            // Polling 模式（默认）：单进程轮询
+            this.bot = new TelegramBot(token, { polling: true });
+        }
+
+        // 初始化消息队列，注册处理函数
+        await messageQueue.init(async (data) => {
+            const { chatId, userId, username, userMessage } = data;
+            return this._processSingleMessage(chatId, userId, username, userMessage);
+        });
+
         // 设置命令
         this.setupCommands();
-        
+
         // 设置事件监听器
         this.setupEventListeners();
-        
+
         this.isRunning = true;
-        console.log('✅ Telegram机器人启动成功');
+        const mode = this.isWebhookMode ? 'Webhook' : 'Polling';
+        console.log(`✅ Telegram机器人启动成功 [${mode} 模式]`);
         console.log(`📱 机器人用户名: @${(await this.bot.getMe()).username}`);
-        
+
         return true;
+    }
+
+    /**
+     * 启动 Webhook Express 服务器（Phase 2）
+     * 由 Nginx 在前端完成 SSL 终止，Node.js 仅处理 HTTP
+     * @private
+     */
+    async _startWebhookServer() {
+        const app = express();
+        app.use(express.json());
+
+        const secretToken = config.webhook.secretToken;
+        const webhookPath = '/webhook';
+
+        app.post(webhookPath, (req, res) => {
+            // 鉴权：验证 Telegram 的 secret token 请求头
+            if (secretToken) {
+                const received = req.headers['x-telegram-bot-api-secret-token'];
+                if (received !== secretToken) {
+                    console.warn('⚠️  Webhook 请求 Token 不匹配，已拒绝');
+                    return res.sendStatus(401);
+                }
+            }
+
+            // 立即返回 200，Telegram 不等待处理结果
+            res.sendStatus(200);
+
+            // 将消息推入 bot 事件系统（触发 'message' 等事件）
+            try {
+                this.bot.processUpdate(req.body);
+            } catch (err) {
+                const context = { function: '_startWebhookServer.processUpdate' };
+                handleError(err, context);
+            }
+        });
+
+        // 健康检查端点
+        app.get('/health', (req, res) => res.json({ status: 'ok', mode: 'webhook' }));
+
+        const port = config.webhook.port;
+        await new Promise((resolve) => {
+            this.webhookServer = app.listen(port, resolve);
+        });
+        console.log(`🌐 Webhook 服务器已启动，监听端口 ${port}`);
+
+        // 向 Telegram 注册 Webhook URL
+        const webhookBaseUrl = configManager.get('telegram.webhookUrl') || '';
+        if (webhookBaseUrl) {
+            const fullUrl = `${webhookBaseUrl.replace(/\/$/, '')}${webhookPath}`;
+            await this.bot.setWebHook(fullUrl, {
+                ...(secretToken && { secret_token: secretToken })
+            });
+            console.log(`✅ Telegram Webhook 已注册: ${fullUrl}`);
+        } else {
+            console.warn('⚠️  TELEGRAM_WEBHOOK_URL 未配置，请手动调用 setWebHook()');
+        }
     }
 
     stop() {
         console.log('🛑 正在停止Telegram机器人并清理资源...');
         
         try {
-            // 1. 停止Telegram轮询
+            // 1. 停止 Telegram 接入（Polling 或 Webhook）
             if (this.bot) {
-                this.bot.stopPolling();
-                console.log('   ✅ Telegram轮询已停止');
-                
-                // 清理事件监听器（将bot引用置空）
+                if (this.isWebhookMode) {
+                    // 关闭 Webhook Express 服务器
+                    if (this.webhookServer) {
+                        this.webhookServer.close();
+                        this.webhookServer = null;
+                    }
+                    // 异步取消 Webhook 注册（不阻塞）
+                    this.bot.deleteWebHook().catch(() => {});
+                    console.log('   ✅ Webhook 服务器已停止');
+                } else {
+                    this.bot.stopPolling();
+                    console.log('   ✅ Telegram 轮询已停止');
+                }
                 this.bot = null;
             }
-            
+
             // 2. 释放AI客户端资源
             if (this.aiService && this.aiService.client) {
-                // OpenAI客户端没有显式的close方法，将引用置空
                 this.aiService.client = null;
                 console.log('   ✅ AI客户端资源已释放');
             }
-            
+
             // 3. 关闭数据库连接池（异步，不阻塞）
             try {
                 const { db } = require('../db/connection');
@@ -94,20 +178,15 @@ class TelegramService {
                 handleError(requireError, context);
                 console.warn('⚠️  加载数据库模块时出错:', requireError.message);
             }
-            
-            // 4. 清理消息队列（Day 3+ 并发控制）
-            try {
-                const { messageQueue } = require('../utils/message-queue');
-                const clearedTasks = messageQueue.clearAll();
-                if (clearedTasks > 0) {
-                    console.log(`   ✅ 消息队列已清理，取消 ${clearedTasks} 个待处理任务`);
-                }
-            } catch (queueError) {
-                const context = { function: 'messageQueue.clearAll', stage: 'shutdown' };
+
+            // 4. 关闭消息队列（Phase 2: BullMQ / 内存队列统一关闭）
+            messageQueue.close().catch(queueError => {
+                const context = { function: 'messageQueue.close', stage: 'shutdown' };
                 handleError(queueError, context);
-                console.warn('⚠️  清理消息队列时出错:', queueError.message);
-            }
-            
+                console.warn('⚠️  关闭消息队列时出错:', queueError.message);
+            });
+            console.log('   ✅ 消息队列关闭中...');
+
             this.isRunning = false;
             console.log('✅ Telegram机器人已完全停止，所有资源已清理');
             
@@ -173,23 +252,28 @@ class TelegramService {
             });
         });
 
-        // 监听错误
-        this.bot.on('polling_error', (error) => {
-            const context = {
-                errorCode: error.code,
-                function: 'TelegramPolling',
-                severity: 'HIGH' // 轮询错误通常是严重的
-            };
-            
-            const errorResult = handleError(error, context);
-            console.error(`❌ Telegram轮询错误 [${errorResult.error.type}]:`, error.message);
-            console.error('📊 错误代码:', error.code);
-            
-            // 如果是认证错误，可能需要重启或通知管理员
-            if (error.code === 401 || error.message.includes('unauthorized')) {
-                console.error('🔐 Telegram认证失败，请检查BOT_TOKEN');
-            }
-        });
+        // 监听错误（区分 Polling / Webhook 模式）
+        if (this.isWebhookMode) {
+            this.bot.on('webhook_error', (error) => {
+                const context = { errorCode: error.code, function: 'TelegramWebhook', severity: 'HIGH' };
+                const errorResult = handleError(error, context);
+                console.error(`❌ Telegram Webhook 错误 [${errorResult.error.type}]:`, error.message);
+            });
+        } else {
+            this.bot.on('polling_error', (error) => {
+                const context = {
+                    errorCode: error.code,
+                    function: 'TelegramPolling',
+                    severity: 'HIGH'
+                };
+                const errorResult = handleError(error, context);
+                console.error(`❌ Telegram轮询错误 [${errorResult.error.type}]:`, error.message);
+                console.error('📊 错误代码:', error.code);
+                if (error.code === 401 || error.message.includes('unauthorized')) {
+                    console.error('🔐 Telegram认证失败，请检查BOT_TOKEN');
+                }
+            });
+        }
 
         // 监听命令
         this.bot.onText(/\/start/, (msg) => this.handleStartCommand(msg));
@@ -221,15 +305,13 @@ class TelegramService {
             handleError(error, context);
         });
 
-        // 将消息处理加入用户队列（确保串行执行）
+        // 将消息处理加入用户队列（Phase 2: BullMQ 持久化 / 内存队列）
         try {
-            await enqueue(userId, async () => {
-                return await this._processSingleMessage(chatId, userId, username, userMessage, msg);
-            }, {
+            await messageQueue.enqueue(userId, {
                 chatId,
+                userId,
                 username,
-                messagePreview: userMessage.substring(0, 50),
-                function: 'handleMessage'
+                userMessage
             });
             
         } catch (error) {
@@ -261,7 +343,7 @@ class TelegramService {
      * 处理单条消息（从队列中调用）
      * @private
      */
-    async _processSingleMessage(chatId, userId, username, userMessage, originalMsg) {
+    async _processSingleMessage(chatId, userId, username, userMessage) {
         try {
             // 1. 确保用户存在
             const user = await this.ensureUser({

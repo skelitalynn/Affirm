@@ -95,6 +95,21 @@ const config = {
         dimensions: parseInt(process.env.EMBEDDING_DIMENSIONS) || 768
     },
 
+    // Redis 配置（BullMQ 持久化队列）
+    redis: {
+        url: process.env.REDIS_URL || 'redis://localhost:6379',
+        host: process.env.REDIS_HOST || 'localhost',
+        port: parseInt(process.env.REDIS_PORT) || 6379,
+        password: process.env.REDIS_PASSWORD || null
+    },
+
+    // Webhook 配置（Phase 2：Telegram Webhook 模式）
+    webhook: {
+        enabled: process.env.WEBHOOK_ENABLED === 'true',
+        port: parseInt(process.env.WEBHOOK_PORT) || 3002,
+        secretToken: process.env.WEBHOOK_SECRET_TOKEN || ''
+    },
+
     // 应用配置
     app: {
         port: process.env.PORT || 3000,

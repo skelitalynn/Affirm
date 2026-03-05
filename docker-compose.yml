@@ -1,6 +1,22 @@
 version: '3.8'
 
 services:
+  # Redis 服务（BullMQ 持久化队列）
+  redis:
+    image: redis:7-alpine
+    container_name: affirm_redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   # PostgreSQL + pgvector 数据库服务
   # 使用 pgvector/pgvector:pg15 镜像，内置 pgvector 扩展（修复 8.3）
   postgres:
@@ -30,6 +46,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     env_file:
       - .env
     environment:
@@ -50,3 +68,4 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
