@@ -75,7 +75,7 @@ console.log('\n4. 📝 检查Notion技能集成...');
 try {
     // 测试Notion模块加载
     delete require.cache[require.resolve('./src/services/notion')];
-    const NotionService = require('./src/services/notion');
+    const NotionService = require('../src/services/notion');
     const notionService = new NotionService();
     console.log('   ✅ NotionService可加载和实例化');
     
@@ -93,13 +93,13 @@ try {
 // 步骤5: 检查AI配置
 console.log('\n5. 🤖 检查AI配置...');
 try {
-    const config = require('./src/config');
+    const config = require('../src/config');
     console.log(`   ✅ AI提供商: ${config.ai.provider || '未设置'}`);
     console.log(`   ✅ API密钥: ${config.ai.apiKey ? '已配置' : '未配置'}`);
     console.log(`   ✅ 基础URL: ${config.ai.baseURL || '默认'}`);
     
     // 检查向量嵌入服务
-    const embeddingService = require('./src/services/embedding');
+    const embeddingService = require('../src/services/embedding');
     const embedding = new embeddingService();
     console.log(`   ✅ 向量嵌入服务: ${embedding.isAvailable() ? '可用' : '不可用（降级模式）'}`);
 } catch (error) {
@@ -146,7 +146,7 @@ if (fs.existsSync(envFile)) {
 
 // 修复2: 检查AI端点配置
 try {
-    const config = require('./src/config');
+    const config = require('../src/config');
     if (config.ai.provider === 'claude') {
         // Claude可能需要不同的嵌入端点
         console.log('   ℹ️  Claude配置检测到，向量嵌入可能不可用');

@@ -10,7 +10,7 @@ cp src/services/embedding.js src/services/embedding.js.backup
 
 cat > src/services/embedding.js << 'EOF'
 // 向量嵌入服务（降级版）- 修复Claude不支持的嵌入功能
-const config = require('../config');
+const config = require('../src/config');
 
 class EmbeddingService {
     constructor() {
@@ -57,13 +57,13 @@ echo "3. 测试关键模块加载..."
 node -e "
 try {
   console.log('🔍 模块加载测试:');
-  const notion = require('./src/services/notion');
+  const notion = require('../src/services/notion');
   console.log('   ✅ NotionService 可加载');
   
-  const telegram = require('./src/services/telegram'); 
+  const telegram = require('../src/services/telegram'); 
   console.log('   ✅ TelegramService 可加载');
   
-  const embedding = require('./src/services/embedding');
+  const embedding = require('../src/services/embedding');
   console.log('   ✅ EmbeddingService 可加载');
   console.log('   📊 向量嵌入状态:', embedding.isAvailable() ? '可用' : '已禁用');
   

@@ -60,7 +60,7 @@ async function runDiagnostics() {
     logStep('2. 检查模块加载...');
     
     try {
-        const notionService = require('./src/services/notion');
+        const notionService = require('../src/services/notion');
         console.log(`   ${colors.green}✓${colors.reset} NotionService模块可加载`);
         
         // 检查构造函数
@@ -110,7 +110,7 @@ async function runDiagnostics() {
         const configPath = require.resolve('./skills/notion/config');
         delete require.cache[configPath];
         
-        const skillConfig = require('./skills/notion/config');
+        const skillConfig = require('../skills/notion/config');
         console.log(`   ${colors.green}✓${colors.reset} 技能配置可加载`);
         
         console.log(`   📊 技能配置值:`);
@@ -133,7 +133,7 @@ async function runDiagnostics() {
         const clientPath = require.resolve('./skills/notion/client');
         delete require.cache[clientPath];
         
-        const NotionClient = require('./skills/notion/client');
+        const NotionClient = require('../skills/notion/client');
         console.log(`   ${colors.green}✓${colors.reset} NotionClient类可加载`);
         
         // 创建实例
@@ -179,7 +179,7 @@ async function runDiagnostics() {
             });
             
             // 重新加载
-            const NotionService = require('./src/services/notion');
+            const NotionService = require('../src/services/notion');
             const service = new NotionService();
             
             console.log('   🧪 尝试初始化...');
@@ -231,7 +231,7 @@ async function runDiagnostics() {
     logStep('7. 检查Telegram服务依赖...');
     
     try {
-        const telegramService = require('./src/services/telegram');
+        const telegramService = require('../src/services/telegram');
         console.log(`   ${colors.green}✓${colors.reset} TelegramService模块可加载`);
         
         // 检查导入

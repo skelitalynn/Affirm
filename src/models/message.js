@@ -155,13 +155,15 @@ class Message {
      * @returns {Promise<Array>} 消息列表
      */
     static async getRecentConversation(userId, hours = 24) {
+        // 强制转为整数，防止模板字面量 SQL 注入（2.7）
+        const safeHours = Math.floor(Math.abs(Number(hours))) || 24;
         const query = `
-            SELECT * FROM messages 
-            WHERE user_id = $1 
-              AND created_at > NOW() - INTERVAL '${hours} hours'
+            SELECT * FROM messages
+            WHERE user_id = $1
+              AND created_at > NOW() - ($2 * INTERVAL '1 hour')
             ORDER BY created_at ASC
         `;
-        const result = await db.query(query, [userId]);
+        const result = await db.query(query, [userId, safeHours]);
         return result.rows;
     }
 
