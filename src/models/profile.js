@@ -35,6 +35,17 @@ class Profile {
     }
 
     /**
+     * 根据画像ID查找画像
+     * @param {string} id - 画像UUID
+     * @returns {Promise<Object|null>} 画像对象或null
+     */
+    static async findById(id) {
+        const query = 'SELECT * FROM profiles WHERE id = $1';
+        const result = await db.query(query, [id]);
+        return result.rows[0] || null;
+    }
+
+    /**
      * 根据用户ID查找画像
      * @param {string} userId - 用户UUID
      * @returns {Promise<Object|null>} 画像对象或null

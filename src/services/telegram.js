@@ -518,17 +518,19 @@ class TelegramService {
     async handleClearCommand(msg) {
         const chatId = msg.chat.id;
         const userId = msg.from.id;
-        
+        const username = msg.from.username || msg.from.first_name || '用户';
+
         try {
             // 确保用户存在
             const user = await this.ensureUser({
                 telegram_id: userId,
-                username: msg.from.username || msg.from.first_name || '用户'
+                username
             });
             
-            // 这里应该实现清除用户消息的逻辑
-            // 暂时发送提示消息
-            await this.bot.sendMessage(chatId, '🧹 清除历史记录功能正在开发中。目前你可以通过/history查看历史记录。\n\n清除功能将在下次更新中添加！', {
+            const deletedCount = await Message.deleteByUserId(user.id);
+            console.log(`🧹 用户 [${username}:${userId}] 清除了 ${deletedCount} 条消息`);
+
+            await this.bot.sendMessage(chatId, `🧹 已清除 ${deletedCount} 条对话历史记录。\n\n你可以重新开始对话了！`, {
                 parse_mode: 'HTML'
             });
             
@@ -536,7 +538,7 @@ class TelegramService {
             const context = {
                 chatId,
                 userId,
-                username: msg.from.username || msg.from.first_name || '用户',
+                username,
                 command: '/clear',
                 function: 'handleClearCommand'
             };

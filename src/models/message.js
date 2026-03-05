@@ -335,10 +335,13 @@ class Message {
      */
     static async getRecentMessages(userId, limit = 20, offset = 0) {
         const query = `
-            SELECT * FROM messages 
-            WHERE user_id = $1
-            ORDER BY created_at DESC 
-            LIMIT $2 OFFSET $3
+            SELECT * FROM (
+                SELECT * FROM messages
+                WHERE user_id = $1
+                ORDER BY created_at DESC
+                LIMIT $2 OFFSET $3
+            ) sub
+            ORDER BY created_at ASC
         `;
         const result = await db.query(query, [userId, limit, offset]);
         return result.rows;
