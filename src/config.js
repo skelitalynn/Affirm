@@ -33,38 +33,56 @@ const config = {
         skillDatabaseId: process.env.NOTION_DATABASE_ID
     },
     
-    // AI模型配置 - 支持DeepSeek和Claude（通过OpenAI兼容接口）
+    // AI模型配置 - 支持多提供商，无降级逻辑
     ai: (() => {
         const provider = (process.env.AI_PROVIDER || 'deepseek').toLowerCase();
-
-        if (provider === 'claude') {
-            // Claude 通过 AiGoCode 的 OpenAI 兼容接口
-            const apiKey = process.env.CLAUDE_API_KEY || process.env.OPENAI_API_KEY;
-            const baseURL = process.env.CLAUDE_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.aigocode.com/v1';
-            const model = process.env.CLAUDE_MODEL || process.env.MODEL_NAME || 'claude-sonnet-4-5-latest';
-
-            return {
-                provider: 'claude',
-                apiKey,
-                baseURL,
-                model,
-                temperature: 0.7,
-                maxTokens: 1000
-            };
+        
+        // 提供商配置映射
+        const providerConfigs = {
+            deepseek: {
+                apiKey: process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY,
+                baseURL: process.env.DEEPSEEK_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.deepseek.com/v1',
+                defaultModel: 'deepseek-reasoner'
+            },
+            claude: {
+                apiKey: process.env.CLAUDE_API_KEY || process.env.OPENAI_API_KEY,
+                baseURL: process.env.CLAUDE_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.aigocode.com/v1',
+                defaultModel: 'claude-sonnet-4-6'
+            },
+            openai: {
+                apiKey: process.env.OPENAI_API_KEY,
+                baseURL: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
+                defaultModel: 'gpt-4'
+            }
+            // 未来可以添加更多提供商，如gemini
+        };
+        
+        // 获取当前提供商的配置
+        const providerConfig = providerConfigs[provider];
+        if (!providerConfig) {
+            console.warn(`⚠️  不支持的AI提供商: ${provider}，默认使用deepseek`);
+            return providerConfigs.deepseek;
         }
-
-        // 默认使用 DeepSeek
-        const apiKey = process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY; // 兼容现有配置
-        const baseURL = process.env.DEEPSEEK_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.deepseek.com/v1';
-        const model = process.env.MODEL_NAME || 'deepseek-reasoner';
-
+        
+        // 确定模型名称：优先使用AI_MODEL，然后使用provider特定的MODEL，最后使用默认
+        let model;
+        if (process.env.AI_MODEL) {
+            model = process.env.AI_MODEL;
+        } else if (provider === 'claude' && process.env.CLAUDE_MODEL) {
+            model = process.env.CLAUDE_MODEL;
+        } else if (process.env.MODEL_NAME) {
+            model = process.env.MODEL_NAME; // 向后兼容
+        } else {
+            model = providerConfig.defaultModel;
+        }
+        
         return {
-            provider: 'deepseek',
-            apiKey,
-            baseURL,
-            model,
-            temperature: 0.7,
-            maxTokens: 1000
+            provider: provider,
+            apiKey: providerConfig.apiKey,
+            baseURL: providerConfig.baseURL,
+            model: model,
+            temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
+            maxTokens: parseInt(process.env.AI_MAX_TOKENS) || 1000
         };
     })(),
     
@@ -93,8 +111,13 @@ requiredEnvVars.forEach(varName => {
 });
 
 // 验证AI配置
-if (!process.env.DEEPSEEK_API_KEY && !process.env.OPENAI_API_KEY && !process.env.CLAUDE_API_KEY) {
-    console.warn('⚠️  未配置AI API密钥 (需要DEEPSEEK_API_KEY或OPENAI_API_KEY或CLAUDE_API_KEY)');
+const aiConfig = config.ai;
+if (!aiConfig.apiKey) {
+    console.warn('⚠️  未配置AI API密钥');
+    console.warn('💡 请根据AI_PROVIDER配置相应的API密钥:');
+    console.warn('   - deepseek: DEEPSEEK_API_KEY');
+    console.warn('   - claude: CLAUDE_API_KEY');  
+    console.warn('   - openai: OPENAI_API_KEY');
 }
 
 module.exports = config;
