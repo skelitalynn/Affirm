@@ -200,13 +200,15 @@ MessageQueue（进程级单例）
 
 ### Embedding 生成
 
-| 参数 | 当前配置 |
-|------|---------|
-| 向量维度 | 768（与 `messages.embedding VECTOR(768)` 匹配） |
-| 模型（DeepSeek） | `text-embedding`（注：DeepSeek 暂无此端点，见已知问题） |
-| 模型（OpenAI） | `text-embedding-3-small` |
+Embedding 使用独立 Provider 配置（`config.embedding`），与主 AI Provider 完全解耦。
 
-> **已知问题**：EmbeddingService 当前与主 AI Provider 共用 API Key 和 Base URL。当 `AI_PROVIDER=deepseek` 时，DeepSeek 不提供 `/embeddings` 端点，导致所有向量写入为 NULL，语义检索失效。修复方案见 `docs/reports/架构升级评估报告.md` Phase 1。
+| 参数 | 配置 |
+|------|------|
+| 配置来源 | `config.embedding`（独立于 `config.ai`）|
+| 向量维度 | 768（与数据库 `VECTOR(768)` 列一致，由 `EMBEDDING_DIMENSIONS` 控制）|
+| 默认模型 | `text-embedding-3-small`（OpenAI，支持原生 768 维输出）|
+| 默认 Base URL | `https://api.openai.com/v1` |
+| 环境变量 | `EMBEDDING_API_KEY` / `EMBEDDING_MODEL` / `EMBEDDING_BASE_URL` / `EMBEDDING_DIMENSIONS` |
 
 ### 消息向量写入流程
 
@@ -230,17 +232,15 @@ embedding 生成失败时，`embedding` 写入 `NULL`。消息仍正常存储，
 
 ## 6. RAG 设计
 
-### 现状
-
-RAG 基础设施已完整实现，但尚未接入对话链路：
+### 当前状态（Phase 1 已完成）
 
 | 组件 | 实现状态 | 接入状态 |
 |------|---------|---------|
-| `Knowledge.semanticSearch()` | ✅ 已实现 | ❌ 未调用 |
-| `Message.semanticSearchByText()` | ✅ 已实现 | ❌ 未调用 |
-| EmbeddingService | ✅ 已实现 | ⚠️ Provider 耦合问题 |
+| `Knowledge.semanticSearch()` | ✅ 已实现 | ✅ 已接入对话链路 |
+| `Message.semanticSearchByText()` | ✅ 已实现 | ✅ 已接入对话链路 |
+| EmbeddingService | ✅ 已实现 | ✅ 独立 Provider 配置 |
 
-### 目标 RAG 架构
+### RAG 架构
 
 ```
 用户消息
@@ -281,9 +281,8 @@ AIService.prepareMessages(context)
 
 ### 接入代码位置
 
-- **检索调用**：`src/services/telegram.js` → `_processSingleMessage()` 第 3 步
-- **Prompt 注入**：`src/services/ai.js` → `prepareMessages()`
-- **接入成本**：约 50 行代码，无 Schema 变更，详见架构升级评估报告 Phase 1
+- **检索调用**：`src/services/telegram.js` → `_processSingleMessage()` Step 3a，`Promise.all` 并行执行两路检索，失败静默降级
+- **Prompt 注入**：`src/services/ai.js` → `prepareMessages()`，RAG 结果注入 System Prompt 的知识背景和历史记忆段落
 
 ---
 
