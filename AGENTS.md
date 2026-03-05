@@ -1,7 +1,7 @@
 # Affirm Repository Rules
 
-> 本文件定义仓库规范，Claude Code 和所有开发者必须遵守。
-> OpenAI Codex 使用者请参阅 `AGENTS.md`（内容与本文件同步）。
+> 本文件定义仓库规范，OpenAI Codex 和所有开发者必须遵守。
+> 内容与 `CLAUDE.md` 保持同步，两者规则完全一致。
 
 ---
 
@@ -90,7 +90,7 @@ docker-compose.yml
 
 ### 规则 8：AI 生成代码前必须先读取相关文件
 
-在修改任何文件前，必须先用 Read 工具读取文件内容，理解现有实现后再进行修改。
+在修改任何文件前，必须先读取文件内容，理解现有实现后再进行修改。
 
 ### 规则 9：禁止在 src/ 以外创建业务逻辑文件
 
@@ -106,17 +106,52 @@ docker-compose.yml
 
 ---
 
-## 目录结构速查
+## 项目背景
+
+Telegram Bot AI "显化导师"。技术栈：Node.js + PostgreSQL + pgvector + BullMQ + Redis。
+
+入口：`src/index.js`
+
+### 关键目录
 
 ```
 Affirm/
 ├── src/           # 核心源代码（唯一业务逻辑存放处）
+│   ├── services/  # telegram.js、ai.js、embedding.js、notion.js
+│   ├── models/    # user.js、message.js、knowledge.js
+│   ├── utils/     # message-queue.js、error-handler.js
+│   ├── config/    # manager.js（配置管理器）
+│   ├── admin/     # Express 管理后台
+│   └── db/        # 数据库连接
 ├── docs/          # 所有文档（按子目录分类）
 ├── scripts/       # 自动化脚本
 ├── tests/         # 测试代码
 ├── tools/         # 调试诊断工具
-├── docker/        # Docker 附属配置
+├── docker/        # Docker 附属配置（含 nginx/nginx.conf）
 ├── monitoring/    # 监控配置
 ├── migrations/    # 数据库迁移
 └── skills/        # OpenClaw Skill 模块
+```
+
+### 关键文件
+
+| 文件 | 说明 |
+|------|------|
+| `src/config.js` | 多 Provider AI 配置、Redis、Webhook 配置 |
+| `src/services/telegram.js` | Bot 主逻辑，支持 Polling / Webhook 双模式 |
+| `src/services/ai.js` | AIService，OpenAI 兼容 SDK |
+| `src/services/embedding.js` | 向量嵌入（独立 Provider，支持 RAG） |
+| `src/utils/message-queue.js` | BullMQ 队列 + 内存降级，`init(fn)` / `enqueue(userId, data)` |
+| `src/utils/error-handler.js` | 统一错误处理 |
+| `src/admin/server.js` | Express 管理后台（port 3001） |
+
+### 环境变量关键项
+
+```
+AI_PROVIDER=deepseek          # 主 LLM Provider
+EMBEDDING_API_KEY=...         # 独立 Embedding Key（必填，否则 RAG 不可用）
+WEBHOOK_ENABLED=false         # true 启用 Webhook 模式
+REDIS_HOST=localhost          # BullMQ 依赖
+TELEGRAM_BOT_TOKEN=...        # 必填
+DB_URL=...                    # 必填
 ```
