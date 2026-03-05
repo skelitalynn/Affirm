@@ -124,18 +124,37 @@ class AIService {
      */
     prepareMessages(context) {
         const messages = [];
-        
+
+        // RAG: 相关知识片段注入
+        let ragKnowledgeContext = '';
+        if (context.relevantKnowledge && context.relevantKnowledge.length > 0) {
+            ragKnowledgeContext = '\n\n相关知识背景（请参考这些内容回应用户）：\n' +
+                context.relevantKnowledge
+                    .map(k => `- ${k.content}`)
+                    .join('\n');
+        }
+
+        // RAG: 语义相关历史记忆注入
+        let ragMemoryContext = '';
+        if (context.semanticMessages && context.semanticMessages.length > 0) {
+            ragMemoryContext = '\n\n相关历史记忆（用户曾经提到过的相关内容）：\n' +
+                context.semanticMessages
+                    .map(m => `- [${m.role === 'user' ? '用户' : '你'}] ${m.content.substring(0, 200)}`)
+                    .join('\n');
+        }
+
         // 系统提示
         const systemPrompt = `你是一个有帮助的显化导师，帮助用户通过积极肯定语和思维重塑来达成目标。
-        
+
 用户信息：
 - 用户名: ${context.user.username || '用户'}
 - 用户ID: ${context.user.id}
+${ragKnowledgeContext}${ragMemoryContext}
 
 请保持温暖、鼓励的语气，提供实用的建议和积极的肯定语。
 如果用户分享目标或愿望，帮助他们转化为积极的肯定语。
 如果用户遇到困难，提供支持和实用的建议。`;
-        
+
         messages.push({
             role: 'system',
             content: systemPrompt

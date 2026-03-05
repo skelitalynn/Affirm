@@ -86,6 +86,15 @@ const config = {
         };
     })(),
     
+    // Embedding配置 - 独立于主AI Provider，用于向量嵌入生成
+    embedding: {
+        provider: process.env.EMBEDDING_PROVIDER || 'openai',
+        apiKey: process.env.EMBEDDING_API_KEY,
+        baseURL: process.env.EMBEDDING_BASE_URL || 'https://api.openai.com/v1',
+        model: process.env.EMBEDDING_MODEL || 'text-embedding-3-small',
+        dimensions: parseInt(process.env.EMBEDDING_DIMENSIONS) || 768
+    },
+
     // 应用配置
     app: {
         port: process.env.PORT || 3000,
@@ -116,8 +125,15 @@ if (!aiConfig.apiKey) {
     console.warn('⚠️  未配置AI API密钥');
     console.warn('💡 请根据AI_PROVIDER配置相应的API密钥:');
     console.warn('   - deepseek: DEEPSEEK_API_KEY');
-    console.warn('   - claude: CLAUDE_API_KEY');  
+    console.warn('   - claude: CLAUDE_API_KEY');
     console.warn('   - openai: OPENAI_API_KEY');
+}
+
+// 验证Embedding配置
+if (!config.embedding.apiKey) {
+    console.warn('⚠️  未配置EMBEDDING_API_KEY，向量嵌入功能将不可用');
+    console.warn('💡 请设置 EMBEDDING_API_KEY（推荐使用OpenAI key）');
+    console.warn('   RAG语义检索依赖此配置');
 }
 
 module.exports = config;

@@ -5,27 +5,23 @@ const config = require('../config');
 
 class EmbeddingService {
     constructor() {
-        // 检查是否配置了API密钥
-        if (!config.ai.apiKey) {
-            console.warn('⚠️  AI API密钥未配置，向量嵌入功能将使用降级方案');
+        const embeddingConfig = config.embedding;
+
+        // 检查是否配置了独立的Embedding API密钥
+        if (!embeddingConfig.apiKey) {
+            console.warn('⚠️  EMBEDDING_API_KEY未配置，向量嵌入功能将不可用');
+            console.warn('💡 请设置 EMBEDDING_API_KEY 以启用RAG语义检索');
             this.openai = null;
         } else {
-            // 创建OpenAI兼容客户端（支持DeepSeek）
             this.openai = new OpenAI({
-                apiKey: config.ai.apiKey,
-                baseURL: config.ai.baseURL || 'https://api.deepseek.com/v1'
+                apiKey: embeddingConfig.apiKey,
+                baseURL: embeddingConfig.baseURL
             });
         }
-        
-        // 根据提供商选择合适的嵌入模型
-        if (config.ai.provider === 'deepseek') {
-            this.model = 'text-embedding'; // DeepSeek的嵌入模型
-        } else {
-            this.model = 'text-embedding-3-small'; // OpenAI的嵌入模型
-        }
-        
-        this.dimensions = 768; // 与数据库vector(768)列维度匹配
-        this.provider = config.ai.provider;
+
+        this.model = embeddingConfig.model;
+        this.dimensions = embeddingConfig.dimensions;
+        this.provider = embeddingConfig.provider;
     }
 
     /**

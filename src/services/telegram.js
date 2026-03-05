@@ -2,6 +2,7 @@
 const TelegramBot = require('node-telegram-bot-api');
 const User = require('../models/user');
 const Message = require('../models/message');
+const Knowledge = require('../models/knowledge');
 const AIService = require('./ai');
 const NotionService = require('./notion');
 const configManager = require('../config/manager'); // Day 3+ 配置管理
@@ -286,6 +287,25 @@ class TelegramService {
             const recentMessages = await Message.getRecentMessages(user.id, contextLimit);
             console.log(`📊 获取到最近 ${recentMessages.length} 条消息作为上下文（限制: ${contextLimit}）`);
 
+            // 3a. RAG: 并行检索相关知识片段和历史记忆
+            let relevantKnowledge = [];
+            let semanticMessages = [];
+            try {
+                [relevantKnowledge, semanticMessages] = await Promise.all([
+                    Knowledge.semanticSearch(userMessage, user.id, 5, 0.6),
+                    Message.semanticSearchByText(userMessage, user.id, 3, 0.65)
+                ]);
+                if (relevantKnowledge.length > 0) {
+                    console.log(`📚 RAG检索到 ${relevantKnowledge.length} 个相关知识片段`);
+                }
+                if (semanticMessages.length > 0) {
+                    console.log(`🧠 RAG检索到 ${semanticMessages.length} 条相关历史记忆`);
+                }
+            } catch (ragError) {
+                // RAG失败不阻断主流程，降级为纯时序上下文
+                console.warn('⚠️ RAG检索失败，使用纯时序上下文:', ragError.message);
+            }
+
             // 4. 准备AI上下文
             const context = {
                 user: {
@@ -294,7 +314,9 @@ class TelegramService {
                     telegram_id: userId
                 },
                 userMessage: userMessage,
-                recentMessages: recentMessages
+                recentMessages: recentMessages,
+                relevantKnowledge: relevantKnowledge,
+                semanticMessages: semanticMessages
             };
 
             // 5. 生成AI回复
