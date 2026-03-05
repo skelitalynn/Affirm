@@ -37,12 +37,18 @@ class User {
         return row;
     }
 
+    // 允许通过 update() 修改的字段白名单（防止 mass assignment 注入）
+    static UPDATABLE_FIELDS = new Set(['username']);
+
     static async update(telegramId, updates) {
         const fields = [];
         const values = [];
         let paramIndex = 1;
 
         for (const [key, value] of Object.entries(updates)) {
+            if (!User.UPDATABLE_FIELDS.has(key)) {
+                throw new Error(`不允许更新字段: ${key}`);
+            }
             if (value !== undefined) {
                 fields.push(`${key} = $${paramIndex}`);
                 values.push(value);

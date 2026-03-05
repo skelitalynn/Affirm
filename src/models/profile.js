@@ -76,6 +76,9 @@ class Profile {
         });
     }
 
+    // 允许通过 update() 修改的字段白名单（防止 mass assignment 注入）
+    static UPDATABLE_FIELDS = new Set(['goals', 'status', 'preferences']);
+
     /**
      * 更新用户画像
      * @param {string} userId - 用户UUID
@@ -88,6 +91,9 @@ class Profile {
         let paramIndex = 1;
 
         for (const [key, value] of Object.entries(updates)) {
+            if (!Profile.UPDATABLE_FIELDS.has(key)) {
+                throw new Error(`不允许更新字段: ${key}`);
+            }
             if (value !== undefined) {
                 if (key === 'preferences' && typeof value === 'object') {
                     fields.push(`${key} = $${paramIndex}`);
