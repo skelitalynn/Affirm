@@ -1,0 +1,35 @@
+node_modules
+npm-debug.log*
+
+# 敏感配置文件不进入镜像
+.env
+.env.*
+!.env.example
+
+# 备份文件
+*.backup
+*.swp
+
+# 开发/测试产物
+coverage/
+.nyc_output/
+tests/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# 文档
+docs/
+*.md
+!README.md
+
+# 临时脚本
+diagnose-*.js
+test-*.js
+fix-*.js
+fix-*.sh
