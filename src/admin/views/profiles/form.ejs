@@ -1,0 +1,80 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1><i class="fas fa-cogs"></i> Affirm Admin</h1>
+            <div class="user-info">
+                <span><%= user ? user.name : 'admin' %> (<%= user ? user.role : 'admin' %>)</span>
+                <a href="/admin/logout" class="btn btn-sm">Logout</a>
+            </div>
+        </header>
+
+        <nav class="sidebar">
+            <ul>
+                <li><a href="/admin"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
+                <li><a class="active" href="/admin/profiles"><i class="fas fa-users"></i> Profiles</a></li>
+                <li><a href="/admin/knowledge"><i class="fas fa-brain"></i> Knowledge</a></li>
+                <li><a href="/admin/settings"><i class="fas fa-sliders-h"></i> Settings</a></li>
+            </ul>
+        </nav>
+
+        <main class="main">
+            <h2><%= mode === 'edit' ? 'Edit Profile' : 'Create Profile' %></h2>
+
+            <% if (error) { %>
+                <div class="alert alert-error"><%= error %></div>
+            <% } %>
+
+            <% const isEdit = mode === 'edit'; %>
+            <% const action = isEdit ? `/admin/profiles/${profile.id}/update` : '/admin/profiles'; %>
+            <% const preferencesText = profile && profile.preferences ? JSON.stringify(profile.preferences, null, 2) : (profile.preferences || ''); %>
+
+            <form method="POST" action="<%= action %>">
+                <% if (!isEdit) { %>
+                    <div class="form-group">
+                        <label for="user_id">User ID (UUID)</label>
+                        <input id="user_id" name="user_id" class="form-control" value="<%= profile.user_id || '' %>" required>
+                    </div>
+                <% } else { %>
+                    <div class="form-group">
+                        <label>User ID</label>
+                        <input class="form-control" value="<%= profile.user_id %>" readonly>
+                    </div>
+                <% } %>
+
+                <div class="form-group">
+                    <label for="goals">Goals</label>
+                    <textarea id="goals" name="goals" class="form-control"><%= profile.goals || '' %></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="status">Status</label>
+                    <input id="status" name="status" class="form-control" value="<%= profile.status || '' %>" placeholder="active">
+                </div>
+
+                <div class="form-group">
+                    <label for="preferences">Preferences (JSON)</label>
+                    <textarea id="preferences" name="preferences" class="form-control" placeholder='{"tone":"calm"}'><%= preferencesText %></textarea>
+                </div>
+
+                <button class="btn btn-primary" type="submit"><%= isEdit ? 'Update' : 'Create' %></button>
+                <a class="btn btn-secondary" href="/admin/profiles">Cancel</a>
+            </form>
+        </main>
+
+        <footer class="footer">
+            <p>Affirm Admin v1.0.0 &copy; 2026</p>
+        </footer>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

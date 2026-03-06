@@ -1,0 +1,16 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title || 'Error' %></title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container" style="display:block; max-width: 900px; margin: 32px auto;">
+        <h1 style="margin-bottom: 16px;">Admin Error</h1>
+        <p><%= error || 'Unexpected error' %></p>
+        <p style="margin-top: 20px;"><a class="btn" href="/admin">Back to Admin</a></p>
+    </div>
+</body>
+</html>

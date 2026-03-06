@@ -1,119 +1,134 @@
 /**
- * 知识管理路由
+ * Knowledge admin routes
  */
 const express = require('express');
 const router = express.Router();
-const { Knowledge } = require('../../models/knowledge');
-const embeddingService = require('../../services/embedding');
+const Knowledge = require('../../models/knowledge');
 
-// 获取所有知识条目
+function buildKnowledgePayload(body, { requireUserId = true, requireContent = true } = {}) {
+    const payload = {};
+
+    if (requireUserId) {
+        if (!body.user_id || !String(body.user_id).trim()) {
+            throw new Error('user_id is required');
+        }
+        payload.user_id = String(body.user_id).trim();
+    }
+
+    if (requireContent) {
+        if (!body.content || !String(body.content).trim()) {
+            throw new Error('content is required');
+        }
+        payload.content = String(body.content).trim();
+    }
+
+    payload.source = body.source && String(body.source).trim() ? String(body.source).trim() : 'admin';
+
+    return payload;
+}
+
+// List knowledge
 router.get('/', async (req, res) => {
     try {
         const knowledge = await Knowledge.findAll();
         res.render('knowledge/list', {
-            title: '知识管理',
+            title: 'Knowledge',
             knowledge,
             user: req.user
         });
     } catch (error) {
-        console.error('获取知识条目失败:', error);
-        res.status(500).render('error', { error: '获取数据失败' });
+        console.error('Failed to load knowledge:', error);
+        res.status(500).render('error', {
+            title: 'Knowledge',
+            error: 'Failed to load knowledge'
+        });
     }
 });
 
-// 显示创建表单
+// New knowledge form
 router.get('/new', (req, res) => {
     res.render('knowledge/form', {
-        title: '添加知识',
+        title: 'Create Knowledge',
         knowledge: {},
-        user: req.user
+        user: req.user,
+        error: null
     });
 });
 
-// 创建新的知识条目
+// Create knowledge
 router.post('/', async (req, res) => {
     try {
-        const { content, category, tags } = req.body;
-        
-        // 生成向量嵌入
-        const embedding = await embeddingService.generateEmbedding(content);
-        
-        const knowledge = await Knowledge.create({
-            content,
-            embedding,
-            category,
-            tags: tags ? tags.split(',').map(t => t.trim()) : []
-        });
-        
-        req.flash('success', '知识条目添加成功');
+        const payload = buildKnowledgePayload(req.body);
+        await Knowledge.create(payload);
         res.redirect('/admin/knowledge');
     } catch (error) {
-        console.error('创建知识条目失败:', error);
-        res.status(500).render('knowledge/form', {
-            title: '添加知识',
+        console.error('Failed to create knowledge:', error);
+        res.status(400).render('knowledge/form', {
+            title: 'Create Knowledge',
             knowledge: req.body,
-            error: '创建失败',
-            user: req.user
+            user: req.user,
+            error: error.message || 'Failed to create knowledge'
         });
     }
 });
 
-// 批量导入界面
+// Import form
 router.get('/import', (req, res) => {
     res.render('knowledge/import', {
-        title: '批量导入知识',
-        user: req.user
+        title: 'Batch Import Knowledge',
+        user: req.user,
+        error: null
     });
 });
 
-// 处理批量导入
+// Batch import
 router.post('/import', async (req, res) => {
     try {
-        const { items } = req.body;
-        if (!items) {
-            req.flash('error', '请输入要导入的内容');
-            return res.redirect('/admin/knowledge/import');
+        if (!req.body.user_id || !String(req.body.user_id).trim()) {
+            throw new Error('user_id is required');
         }
-        
-        const lines = items.split('\n').filter(line => line.trim());
-        let successCount = 0;
-        let errorCount = 0;
-        
+
+        const userId = String(req.body.user_id).trim();
+        const source = req.body.source && String(req.body.source).trim() ? String(req.body.source).trim() : 'batch-import';
+        const lines = String(req.body.items || '')
+            .split('\n')
+            .map(line => line.trim())
+            .filter(Boolean);
+
+        if (lines.length === 0) {
+            throw new Error('items is required');
+        }
+
         for (const line of lines) {
-            try {
-                const embedding = await embeddingService.generateEmbedding(line);
-                await Knowledge.create({
-                    content: line,
-                    embedding,
-                    category: 'imported',
-                    tags: ['batch-import']
-                });
-                successCount++;
-            } catch (error) {
-                console.error(`导入失败: ${line}`, error);
-                errorCount++;
-            }
+            await Knowledge.create({
+                user_id: userId,
+                content: line,
+                source
+            });
         }
-        
-        req.flash('success', `批量导入完成: ${successCount} 成功, ${errorCount} 失败`);
+
         res.redirect('/admin/knowledge');
     } catch (error) {
-        console.error('批量导入失败:', error);
-        req.flash('error', '批量导入失败');
-        res.redirect('/admin/knowledge/import');
+        console.error('Failed to import knowledge:', error);
+        res.status(400).render('knowledge/import', {
+            title: 'Batch Import Knowledge',
+            user: req.user,
+            error: error.message || 'Failed to import knowledge'
+        });
     }
 });
 
-// 删除知识条目
+// Delete knowledge item
 router.post('/:id/delete', async (req, res) => {
     try {
         await Knowledge.delete(req.params.id);
-        req.flash('success', '知识条目删除成功');
         res.redirect('/admin/knowledge');
     } catch (error) {
-        console.error('删除知识条目失败:', error);
-        req.flash('error', '删除失败');
-        res.redirect('/admin/knowledge');
+        console.error('Failed to delete knowledge:', error);
+        res.status(500).render('error', {
+            title: 'Delete Knowledge',
+            error: 'Failed to delete knowledge'
+        });
     }
 });
 

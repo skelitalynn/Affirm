@@ -1,0 +1,64 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1><i class="fas fa-cogs"></i> Affirm Admin</h1>
+            <div class="user-info">
+                <span><%= user ? user.name : 'admin' %> (<%= user ? user.role : 'admin' %>)</span>
+                <a href="/admin/logout" class="btn btn-sm">Logout</a>
+            </div>
+        </header>
+
+        <nav class="sidebar">
+            <ul>
+                <li><a href="/admin"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
+                <li><a href="/admin/profiles"><i class="fas fa-users"></i> Profiles</a></li>
+                <li><a class="active" href="/admin/knowledge"><i class="fas fa-brain"></i> Knowledge</a></li>
+                <li><a href="/admin/settings"><i class="fas fa-sliders-h"></i> Settings</a></li>
+            </ul>
+        </nav>
+
+        <main class="main">
+            <h2>Create Knowledge</h2>
+
+            <% if (error) { %>
+                <div class="alert alert-error"><%= error %></div>
+            <% } %>
+
+            <form method="POST" action="/admin/knowledge">
+                <div class="form-group">
+                    <label for="user_id">User ID (UUID)</label>
+                    <input id="user_id" name="user_id" class="form-control" value="<%= knowledge.user_id || '' %>" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="source">Source</label>
+                    <input id="source" name="source" class="form-control" value="<%= knowledge.source || 'admin' %>">
+                </div>
+
+                <div class="form-group">
+                    <label for="content">Content</label>
+                    <textarea id="content" name="content" class="form-control" required><%= knowledge.content || '' %></textarea>
+                </div>
+
+                <button class="btn btn-primary" type="submit">Create</button>
+                <a class="btn btn-secondary" href="/admin/knowledge">Cancel</a>
+            </form>
+        </main>
+
+        <footer class="footer">
+            <p>Affirm Admin v1.0.0 &copy; 2026</p>
+        </footer>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

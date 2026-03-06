@@ -198,6 +198,15 @@ class Message {
             }
         }
 
+        let embeddingForQuery = null;
+        if (embedding !== null && embedding !== undefined) {
+            if (Array.isArray(embedding)) {
+                embeddingForQuery = embeddingService.toVectorSql(embedding);
+            } else if (typeof embedding === 'string') {
+                embeddingForQuery = embedding;
+            }
+        }
+
         const fields = [];
         const values = [];
         let paramIndex = 1;
@@ -214,9 +223,9 @@ class Message {
             paramIndex++;
         }
 
-        if (embedding) {
+        if (embeddingForQuery !== null) {
             fields.push(`embedding = $${paramIndex}::vector`);
-            values.push(embedding);
+            values.push(embeddingForQuery);
             paramIndex++;
         }
 

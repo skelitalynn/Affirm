@@ -1,65 +1,85 @@
-<% layout('layout') -%>
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1><i class="fas fa-cogs"></i> Affirm Admin</h1>
+            <div class="user-info">
+                <span><%= user ? user.name : 'admin' %> (<%= user ? user.role : 'admin' %>)</span>
+                <a href="/admin/logout" class="btn btn-sm">Logout</a>
+            </div>
+        </header>
 
-<div class="dashboard">
-    <div class="stats">
-        <div class="stat-card">
-            <div class="stat-icon">
-                <i class="fas fa-users"></i>
+        <nav class="sidebar">
+            <ul>
+                <li><a class="active" href="/admin"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
+                <li><a href="/admin/profiles"><i class="fas fa-users"></i> Profiles</a></li>
+                <li><a href="/admin/knowledge"><i class="fas fa-brain"></i> Knowledge</a></li>
+                <li><a href="/admin/settings"><i class="fas fa-sliders-h"></i> Settings</a></li>
+            </ul>
+        </nav>
+
+        <main class="main">
+            <h2>Dashboard</h2>
+
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-icon"><i class="fas fa-users"></i></div>
+                    <div class="stat-content">
+                        <h3>Profiles</h3>
+                        <p class="stat-number"><%= stats.profilesCount || 0 %></p>
+                        <p class="stat-desc">Stored profile records</p>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon"><i class="fas fa-brain"></i></div>
+                    <div class="stat-content">
+                        <h3>Knowledge</h3>
+                        <p class="stat-number"><%= stats.knowledgeCount || 0 %></p>
+                        <p class="stat-desc">Knowledge chunks in database</p>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon"><i class="fas fa-comments"></i></div>
+                    <div class="stat-content">
+                        <h3>Messages</h3>
+                        <p class="stat-number"><%= stats.messagesCount || 0 %></p>
+                        <p class="stat-desc">Conversation messages</p>
+                    </div>
+                </div>
             </div>
-            <div class="stat-content">
-                <h3>Profiles</h3>
-                <p class="stat-number"><%= stats.profilesCount || 0 %></p>
-                <p class="stat-desc">已配置的身份模板</p>
+
+            <div class="recent-activity">
+                <h3><i class="fas fa-history"></i> Recent Activity</h3>
+                <ul>
+                    <% if (recentActivity && recentActivity.length > 0) { %>
+                        <% recentActivity.forEach((activity) => { %>
+                            <li>
+                                <span class="activity-time"><%= activity.time %></span>
+                                <span class="activity-text"><%= activity.text %></span>
+                            </li>
+                        <% }) %>
+                    <% } else { %>
+                        <li>No activity data yet.</li>
+                    <% } %>
+                </ul>
             </div>
-        </div>
-        
-        <div class="stat-card">
-            <div class="stat-icon">
-                <i class="fas fa-brain"></i>
-            </div>
-            <div class="stat-content">
-                <h3>知识条目</h3>
-                <p class="stat-number"><%= stats.knowledgeCount || 0 %></p>
-                <p class="stat-desc">已存储的知识片段</p>
-            </div>
-        </div>
-        
-        <div class="stat-card">
-            <div class="stat-icon">
-                <i class="fas fa-comments"></i>
-            </div>
-            <div class="stat-content">
-                <h3>对话消息</h3>
-                <p class="stat-number"><%= stats.messagesCount || 0 %></p>
-                <p class="stat-desc">已处理的对话</p>
-            </div>
-        </div>
-        
-        <div class="stat-card">
-            <div class="stat-icon">
-                <i class="fas fa-database"></i>
-            </div>
-            <div class="stat-content">
-                <h3>数据库</h3>
-                <p class="stat-number">正常</p>
-                <p class="stat-desc">连接状态良好</p>
-            </div>
-        </div>
+        </main>
+
+        <footer class="footer">
+            <p>Affirm Admin v<%= version || '1.0.0' %> &copy; 2026</p>
+        </footer>
     </div>
-    
-    <div class="recent-activity">
-        <h3><i class="fas fa-history"></i> 最近活动</h3>
-        <ul>
-            <% if (recentActivity && recentActivity.length > 0) { %>
-                <% recentActivity.forEach(activity => { %>
-                    <li>
-                        <span class="activity-time"><%= activity.time %></span>
-                        <span class="activity-text"><%= activity.text %></span>
-                    </li>
-                <% }) %>
-            <% } else { %>
-                <li>暂无最近活动</li>
-            <% } %>
-        </ul>
-    </div>
-</div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

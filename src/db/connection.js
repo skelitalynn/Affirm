@@ -2,27 +2,17 @@
 const { Pool } = require('pg');
 const config = require('../config');
 
-// 解析数据库URL，确保密码正确处理
 function parseDatabaseConfig() {
     const url = config.database.url;
-    
-    // 简单解析URL
-    const match = url.match(/postgresql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)/);
-    if (match) {
-        return {
-            user: match[1],
-            password: match[2],
-            host: match[3],
-            port: parseInt(match[4], 10),
-            database: match[5],
-            ...config.database.pool
-        };
+
+    if (!url || typeof url !== 'string' || url.trim() === '') {
+        throw new Error('Database connection is missing: please set DB_URL');
     }
-    
-    // 如果URL解析失败，直接使用URL
+
+    // 交给 pg 原生 connectionString 解析，避免手写正则导致特殊字符/参数解析错误
     return {
         connectionString: url,
-        ...config.database.pool
+        ...(config.database.pool || {})
     };
 }
 
@@ -40,7 +30,7 @@ class Database {
         if (process.env.NODE_ENV === 'test') {
             dbConfig.allowExitOnIdle = true;
         }
-        
+
         this.pool = new Pool(dbConfig);
         // pgvector类型注册暂时禁用
         // try {
@@ -67,13 +57,13 @@ class Database {
         try {
             const res = await this.pool.query(text, params);
             const duration = Date.now() - start;
-            console.log(`📊 SQL查询执行时间: ${duration}ms`, { 
+            console.log(`📊 SQL查询执行时间: ${duration}ms`, {
                 query: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
                 params: params ? params.slice(0, 3) : []
             });
             return res;
         } catch (error) {
-            console.error('❌ SQL查询错误:', { 
+            console.error('❌ SQL查询错误:', {
                 error: error.message,
                 code: error.code,
                 query: text.substring(0, 200)

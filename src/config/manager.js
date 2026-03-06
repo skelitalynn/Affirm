@@ -116,8 +116,7 @@ class ConfigManager extends EventEmitter {
         // 检查必需配置
         const requiredPaths = [
             'telegram.botToken',
-            'database.url',
-            'ai.apiKey'
+            'database.url'
         ];
         
         for (const path of requiredPaths) {
@@ -191,7 +190,7 @@ class ConfigManager extends EventEmitter {
     _createValidators() {
         return {
             'telegram.botToken': (value) => typeof value === 'string' && value.length > 40 && value.includes(':'),
-            'ai.apiKey': (value) => typeof value === 'string' && value.length > 20 && value.startsWith('sk-'),
+            'ai.apiKey': (value) => value === null || value === undefined || typeof value === 'string',
             'ai.temperature': (value) => typeof value === 'number' && value >= 0 && value <= 2,
             'ai.maxTokens': (value) => typeof value === 'number' && value >= 1 && value <= 4000,
             'app.logLevel': (value) => ['error', 'warn', 'info', 'debug'].includes(value),

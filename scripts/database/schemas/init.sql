@@ -1,7 +1,9 @@
--- Affirm项目数据库初始化脚本
--- 创建表结构
+﻿-- Affirm project database initialization
+-- Extension dependencies
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS vector;
 
--- 用户表
+-- Users
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     telegram_id BIGINT UNIQUE,
@@ -10,7 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 用户画像表
+-- Profiles
 CREATE TABLE IF NOT EXISTS profiles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -21,18 +23,18 @@ CREATE TABLE IF NOT EXISTS profiles (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 消息表（对话记录）
+-- Messages
 CREATE TABLE IF NOT EXISTS messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     role VARCHAR(20) CHECK (role IN ('user', 'assistant', 'system')),
     content TEXT,
-    embedding VECTOR(768), -- pgvector扩展
+    embedding VECTOR(768),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     metadata JSONB
 );
 
--- 知识片段表
+-- Knowledge chunks
 CREATE TABLE IF NOT EXISTS knowledge_chunks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -42,7 +44,7 @@ CREATE TABLE IF NOT EXISTS knowledge_chunks (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 同步任务表
+-- Sync jobs
 CREATE TABLE IF NOT EXISTS sync_jobs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     job_type VARCHAR(50),
@@ -53,13 +55,13 @@ CREATE TABLE IF NOT EXISTS sync_jobs (
     completed_at TIMESTAMP WITH TIME ZONE
 );
 
--- 创建索引
+-- Indexes
 CREATE INDEX IF NOT EXISTS idx_messages_user_created ON messages(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_embedding ON messages USING ivfflat (embedding vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_knowledge_embedding ON knowledge_chunks USING ivfflat (embedding vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_sync_jobs_date ON sync_jobs(date_key);
 
--- 创建更新时间的触发器函数
+-- updated_at trigger
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -68,14 +70,13 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
--- 为profiles表添加触发器
 DROP TRIGGER IF EXISTS update_profiles_updated_at ON profiles;
 CREATE TRIGGER update_profiles_updated_at
     BEFORE UPDATE ON profiles
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
--- 插入测试用户
-INSERT INTO users (telegram_id, username) 
-VALUES (7927819221, '🍎')
+-- Optional seed user
+INSERT INTO users (telegram_id, username)
+VALUES (7927819221, 'seed_user')
 ON CONFLICT (telegram_id) DO NOTHING;

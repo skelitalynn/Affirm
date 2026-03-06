@@ -107,13 +107,14 @@ class EmbeddingService {
      * @returns {Promise<Array<Array<number>|null>>} 向量数组（null表示不可用）
      */
     async generateEmbeddings(texts) {
+        let validTexts = [];
         try {
             if (!Array.isArray(texts) || texts.length === 0) {
                 throw new Error('文本数组不能为空');
             }
 
             // 过滤空文本
-            const validTexts = texts.filter(text => text && text.trim().length > 0);
+            validTexts = texts.filter(text => text && text.trim().length > 0);
             if (validTexts.length === 0) {
                 throw new Error('没有有效的文本');
             }

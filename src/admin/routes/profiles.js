@@ -1,120 +1,164 @@
 /**
- * Profiles管理路由
+ * Profiles admin routes
  */
 const express = require('express');
 const router = express.Router();
-const db = require('../../db/connection');
-const { Profile } = require('../../models/profile');
+const Profile = require('../../models/profile');
 
-// 获取所有profiles
+function parsePreferences(raw) {
+    if (raw === undefined || raw === null || raw === '') {
+        return null;
+    }
+
+    if (typeof raw === 'object') {
+        return raw;
+    }
+
+    try {
+        return JSON.parse(raw);
+    } catch (error) {
+        const parseError = new Error('preferences must be valid JSON');
+        parseError.code = 'INVALID_PREFERENCES';
+        throw parseError;
+    }
+}
+
+function buildProfilePayload(body, { requireUserId = false } = {}) {
+    const payload = {};
+
+    if (requireUserId) {
+        if (!body.user_id || !String(body.user_id).trim()) {
+            throw new Error('user_id is required');
+        }
+        payload.user_id = String(body.user_id).trim();
+    }
+
+    if (body.goals !== undefined) {
+        payload.goals = body.goals === '' ? null : body.goals;
+    }
+
+    if (body.status !== undefined) {
+        payload.status = body.status === '' ? null : body.status;
+    }
+
+    if (body.preferences !== undefined) {
+        payload.preferences = parsePreferences(body.preferences);
+    }
+
+    return payload;
+}
+
+// List profiles
 router.get('/', async (req, res) => {
     try {
         const profiles = await Profile.findAll();
         res.render('profiles/list', {
-            title: 'Profiles管理',
+            title: 'Profiles',
             profiles,
             user: req.user
         });
     } catch (error) {
-        console.error('获取profiles失败:', error);
-        res.status(500).render('error', { error: '获取数据失败' });
+        console.error('Failed to load profiles:', error);
+        res.status(500).render('error', {
+            title: 'Profiles',
+            error: 'Failed to load profiles'
+        });
     }
 });
 
-// 显示创建表单
+// New profile form
 router.get('/new', (req, res) => {
     res.render('profiles/form', {
-        title: '创建Profile',
+        title: 'Create Profile',
         profile: {},
-        user: req.user
+        mode: 'create',
+        user: req.user,
+        error: null
     });
 });
 
-// 创建新的profile
+// Create profile
 router.post('/', async (req, res) => {
     try {
-        const { name, description, keywords, is_default } = req.body;
-        
-        const profile = await Profile.create({
-            name,
-            description,
-            keywords: keywords ? keywords.split(',').map(k => k.trim()) : [],
-            is_default: is_default === 'on'
-        });
-        
-        req.flash = req.flash || (() => {});
-        req.flash('success', 'Profile创建成功');
+        const payload = buildProfilePayload(req.body, { requireUserId: true });
+        await Profile.create(payload);
         res.redirect('/admin/profiles');
     } catch (error) {
-        console.error('创建profile失败:', error);
-        res.status(500).render('profiles/form', {
-            title: '创建Profile',
+        console.error('Failed to create profile:', error);
+        res.status(400).render('profiles/form', {
+            title: 'Create Profile',
             profile: req.body,
-            error: '创建失败',
-            user: req.user
+            mode: 'create',
+            user: req.user,
+            error: error.message || 'Failed to create profile'
         });
     }
 });
 
-// 显示编辑表单
+// Edit profile form
 router.get('/:id/edit', async (req, res) => {
     try {
         const profile = await Profile.findById(req.params.id);
         if (!profile) {
-            return res.status(404).render('404');
+            return res.status(404).render('404', { url: req.originalUrl });
         }
-        
+
         res.render('profiles/form', {
-            title: '编辑Profile',
+            title: 'Edit Profile',
             profile,
-            user: req.user
+            mode: 'edit',
+            user: req.user,
+            error: null
         });
     } catch (error) {
-        console.error('获取profile失败:', error);
-        res.status(500).render('error', { error: '获取数据失败' });
+        console.error('Failed to load profile:', error);
+        res.status(500).render('error', {
+            title: 'Edit Profile',
+            error: 'Failed to load profile'
+        });
     }
 });
 
-// 更新profile
+// Update profile
 router.post('/:id/update', async (req, res) => {
     try {
-        const { name, description, keywords, is_default } = req.body;
-        
         const profile = await Profile.findById(req.params.id);
         if (!profile) {
-            return res.status(404).render('404');
+            return res.status(404).render('404', { url: req.originalUrl });
         }
-        
-        await Profile.update(req.params.id, {
-            name,
-            description,
-            keywords: keywords ? keywords.split(',').map(k => k.trim()) : [],
-            is_default: is_default === 'on'
-        });
-        
-        req.flash('success', 'Profile更新成功');
+
+        const payload = buildProfilePayload(req.body);
+        await Profile.update(profile.user_id, payload);
+
         res.redirect('/admin/profiles');
     } catch (error) {
-        console.error('更新profile失败:', error);
-        res.status(500).render('profiles/form', {
-            title: '编辑Profile',
-            profile: req.body,
-            error: '更新失败',
-            user: req.user
+        console.error('Failed to update profile:', error);
+        res.status(400).render('profiles/form', {
+            title: 'Edit Profile',
+            profile: { ...req.body, id: req.params.id },
+            mode: 'edit',
+            user: req.user,
+            error: error.message || 'Failed to update profile'
         });
     }
 });
 
-// 删除profile
+// Delete profile
 router.post('/:id/delete', async (req, res) => {
     try {
-        await Profile.delete(req.params.id);
-        req.flash('success', 'Profile删除成功');
+        const profile = await Profile.findById(req.params.id);
+        if (!profile) {
+            return res.status(404).render('404', { url: req.originalUrl });
+        }
+
+        await Profile.delete(profile.user_id);
         res.redirect('/admin/profiles');
     } catch (error) {
-        console.error('删除profile失败:', error);
-        req.flash('error', '删除失败');
-        res.redirect('/admin/profiles');
+        console.error('Failed to delete profile:', error);
+        res.status(500).render('error', {
+            title: 'Delete Profile',
+            error: 'Failed to delete profile'
+        });
     }
 });
 

@@ -150,6 +150,17 @@ class Knowledge {
         }
 
         // 构建查询
+        if (queryEmbedding === null) {
+            console.log('ℹ️  向量嵌入不可用，语义检索已禁用');
+            return [];
+        }
+
+        const vectorSql = embeddingService.toVectorSql(queryEmbedding);
+        if (!vectorSql) {
+            console.warn('⚠️  无法转换查询向量格式，返回空结果');
+            return [];
+        }
+
         let query;
         let values;
         
@@ -159,21 +170,23 @@ class Knowledge {
                        (1 - (embedding <=> $1::vector)) as similarity
                 FROM knowledge_chunks 
                 WHERE user_id = $2 
+                  AND embedding IS NOT NULL
                   AND (1 - (embedding <=> $1::vector)) > $3
                 ORDER BY embedding <=> $1::vector
                 LIMIT $4
             `;
-            values = [queryEmbedding, userId, similarityThreshold, limit];
+            values = [vectorSql, userId, similarityThreshold, limit];
         } else {
             query = `
                 SELECT *, 
                        (1 - (embedding <=> $1::vector)) as similarity
                 FROM knowledge_chunks 
-                WHERE (1 - (embedding <=> $1::vector)) > $2
+                WHERE embedding IS NOT NULL
+                  AND (1 - (embedding <=> $1::vector)) > $2
                 ORDER BY embedding <=> $1::vector
                 LIMIT $3
             `;
-            values = [queryEmbedding, similarityThreshold, limit];
+            values = [vectorSql, similarityThreshold, limit];
         }
 
         try {
@@ -205,6 +218,15 @@ class Knowledge {
             }
         }
 
+        let embeddingForQuery = null;
+        if (embedding !== null && embedding !== undefined) {
+            if (Array.isArray(embedding)) {
+                embeddingForQuery = embeddingService.toVectorSql(embedding);
+            } else if (typeof embedding === 'string') {
+                embeddingForQuery = embedding;
+            }
+        }
+
         const fields = [];
         const values = [];
         let paramIndex = 1;
@@ -221,9 +243,9 @@ class Knowledge {
             paramIndex++;
         }
 
-        if (embedding) {
+        if (embeddingForQuery !== null) {
             fields.push(`embedding = $${paramIndex}::vector`);
-            values.push(embedding);
+            values.push(embeddingForQuery);
             paramIndex++;
         }
 

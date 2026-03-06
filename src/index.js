@@ -1,91 +1,122 @@
 #!/usr/bin/env node
 /**
- * Affirm项目 - 主入口文件
- * Telegram机器人 + AI助手
+ * Main entrypoint for Affirm bot service.
  */
 require('dotenv').config();
 
-
+const http = require('http');
 const TelegramService = require('./services/telegram');
 const config = require('./config');
+const { healthCheck } = require('./health');
 
-// 初始化服务
-async function initialize() {
-    console.log('🤖 Affirm项目启动中...');
-    console.log('📊 环境:', config.app.nodeEnv || 'development');
-    console.log('🔧 配置检查:');
-    console.log('   Telegram Token:', config.telegram.botToken ? '✅ 已配置' : '❌ 未配置');
-    if (config.telegram.botToken) {
-        console.log(`   Token预览: ${config.telegram.botToken.substring(0, 10)}...${config.telegram.botToken.substring(config.telegram.botToken.length - 4)}`);
+let telegramService = null;
+let healthServer = null;
+let shuttingDown = false;
+
+async function startHealthServer() {
+    const port = Number(config.app.port || 3000);
+
+    healthServer = http.createServer(async (req, res) => {
+        if (req.url === '/health') {
+            try {
+                const result = await healthCheck();
+                const statusCode = result.status === 'healthy' ? 200 : 503;
+                res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(result));
+            } catch (error) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ status: 'unhealthy', error: error.message }));
+            }
+            return;
+        }
+
+        if (req.url === '/') {
+            res.writeHead(200, { 'Content-Type': 'text/plain' });
+            res.end('Affirm service is running');
+            return;
+        }
+
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not Found');
+    });
+
+    await new Promise((resolve, reject) => {
+        const onError = (error) => {
+            healthServer.removeListener('listening', onListening);
+            reject(error);
+        };
+
+        const onListening = () => {
+            healthServer.removeListener('error', onError);
+            resolve();
+        };
+
+        healthServer.once('error', onError);
+        healthServer.once('listening', onListening);
+        healthServer.listen(port);
+    });
+
+    console.log(`Health server listening on :${port}`);
+}
+
+async function stopServices(exitCode = 0) {
+    if (shuttingDown) {
+        return;
     }
-    console.log('   AI API Key:', config.ai.apiKey ? '✅ 已配置' : '❌ 未配置');
-    console.log('   AI Provider:', config.ai.provider || 'deepseek');
-    console.log('   Database URL:', config.database.url ? '✅ 已配置' : '❌ 未配置');
-    
+    shuttingDown = true;
+
+    console.log('Shutting down services...');
+
+    if (telegramService) {
+        try {
+            await Promise.resolve(telegramService.stop());
+        } catch (error) {
+            console.error('Failed to stop telegram service:', error.message);
+        }
+    }
+
+    if (healthServer) {
+        await new Promise((resolve) => {
+            healthServer.close(() => resolve());
+        });
+        healthServer = null;
+    }
+
+    process.exit(exitCode);
+}
+
+async function initialize() {
+    console.log('Starting Affirm service...');
+    console.log(`Environment: ${config.app.nodeEnv || 'development'}`);
+
     try {
-        // 启动Telegram机器人
-        const telegramService = new TelegramService(config);
+        await startHealthServer();
+
+        telegramService = new TelegramService(config);
         await telegramService.start();
-        
-        console.log('🎉 Affirm机器人已启动');
-        console.log('📱 机器人已准备好接收消息');
-        
-        // 保持进程运行
-        process.on('SIGINT', () => {
-            console.log('🛑 收到终止信号，正在关闭...');
-            telegramService.stop();
-            process.exit(0);
-        });
-        
-        process.on('SIGTERM', () => {
-            console.log('🛑 收到终止信号，正在关闭...');
-            telegramService.stop();
-            process.exit(0);
-        });
-        
+
+        console.log('Affirm service started');
     } catch (error) {
-        console.error('❌ 启动失败:', error.message);
+        console.error('Startup failed:', error.message);
         console.error(error.stack);
-        process.exit(1);
+        await stopServices(1);
     }
 }
 
-// 错误处理
-process.on('uncaughtException', (error) => {
-    console.error('⚠️  未捕获的异常:', error.message);
+process.on('SIGINT', () => stopServices(0));
+process.on('SIGTERM', () => stopServices(0));
+
+process.on('uncaughtException', async (error) => {
+    console.error('Uncaught exception:', error.message);
     console.error(error.stack);
-    
-    // 如果是JSON解析错误，尝试获取更多上下文
-    if (error.message.includes('JSON') || error.message.includes('parse') || error.name === 'SyntaxError') {
-        console.error('🔍 JSON解析错误详细信息:');
-        console.error(`   错误名称: ${error.name}`);
-        console.error(`   错误消息: ${error.message}`);
-        
-        // 尝试从错误堆栈中提取更多信息
-        const stackLines = error.stack.split('\n');
-        console.error(`   错误堆栈:`, stackLines.slice(0, 5).join('\n    '));
-        
-        // 如果错误有额外的属性，打印它们
-        for (const key in error) {
-            if (key !== 'message' && key !== 'stack' && key !== 'name') {
-                try {
-                    console.error(`   错误属性 ${key}: ${JSON.stringify(error[key])}`);
-                } catch (e) {
-                    console.error(`   错误属性 ${key}: [不可序列化]`);
-                }
-            }
-        }
-    }
+    await stopServices(1);
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('⚠️  未处理的Promise拒绝:', reason);
-    if (reason instanceof Error) {
-        console.error('   拒绝堆栈:', reason.stack);
-    }
+process.on('unhandledRejection', async (reason) => {
+    console.error('Unhandled rejection:', reason);
+    await stopServices(1);
 });
 
-// 启动应用
 if (require.main === module) {
     initialize();
 }
