@@ -1,0 +1,45 @@
+<% const isEditing = Boolean(isEdit); %>
+<% let preferencesValue = ''; %>
+<% if (profile && profile.preferences !== undefined && profile.preferences !== null) { %>
+    <% preferencesValue = typeof profile.preferences === 'string' ? profile.preferences : JSON.stringify(profile.preferences, null, 2); %>
+<% } %>
+
+<% if (error) { %>
+    <div class="alert alert-error"><%= error %></div>
+<% } %>
+
+<form method="POST" action="<%= isEditing ? `/admin/profiles/${profile.id}/update` : '/admin/profiles' %>">
+    <div class="form-group">
+        <label for="user_id">User ID（UUID）</label>
+        <input
+            type="text"
+            id="user_id"
+            name="user_id"
+            class="form-control"
+            value="<%= profile.user_id || '' %>"
+            <%= isEditing ? 'readonly' : 'required' %>
+        >
+    </div>
+
+    <div class="form-group">
+        <label for="goals">目标（goals）</label>
+        <textarea id="goals" name="goals" class="form-control"><%= profile.goals || '' %></textarea>
+    </div>
+
+    <div class="form-group">
+        <label for="status">状态（status）</label>
+        <input type="text" id="status" name="status" class="form-control" value="<%= profile.status || '' %>">
+    </div>
+
+    <div class="form-group">
+        <label for="preferences">偏好（preferences，JSON）</label>
+        <textarea id="preferences" name="preferences" class="form-control"><%= preferencesValue %></textarea>
+    </div>
+
+    <div class="action-bar">
+        <button type="submit" class="btn btn-primary">
+            <i class="fas fa-save"></i> <%= isEditing ? '保存修改' : '创建' %>
+        </button>
+        <a href="/admin/profiles" class="btn btn-secondary">返回列表</a>
+    </div>
+</form>

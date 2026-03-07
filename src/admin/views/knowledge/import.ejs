@@ -1,0 +1,27 @@
+<% if (error || (flash && flash.error)) { %>
+    <div class="alert alert-error"><%= error || flash.error %></div>
+<% } %>
+
+<form method="POST" action="/admin/knowledge/import">
+    <div class="form-group">
+        <label for="user_id">User ID（可选，UUID）</label>
+        <input type="text" id="user_id" name="user_id" class="form-control" placeholder="为空表示全局知识">
+    </div>
+
+    <div class="form-group">
+        <label for="source">来源（source）</label>
+        <input type="text" id="source" name="source" class="form-control" value="admin-import" required>
+    </div>
+
+    <div class="form-group">
+        <label for="items">批量内容（每行一条）</label>
+        <textarea id="items" name="items" class="form-control" placeholder="第一条知识&#10;第二条知识" required></textarea>
+    </div>
+
+    <div class="action-bar">
+        <button type="submit" class="btn btn-primary">
+            <i class="fas fa-file-import"></i> 开始导入
+        </button>
+        <a href="/admin/knowledge" class="btn btn-secondary">返回列表</a>
+    </div>
+</form>

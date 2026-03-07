@@ -1,0 +1,29 @@
+<% const isEditing = Boolean(isEdit); %>
+
+<% if (error) { %>
+    <div class="alert alert-error"><%= error %></div>
+<% } %>
+
+<form method="POST" action="<%= isEditing ? `/admin/knowledge/${knowledge.id}/update` : '/admin/knowledge' %>">
+    <div class="form-group">
+        <label for="user_id">User ID（可选，UUID）</label>
+        <input type="text" id="user_id" name="user_id" class="form-control" value="<%= knowledge.user_id || '' %>">
+    </div>
+
+    <div class="form-group">
+        <label for="source">来源（source）</label>
+        <input type="text" id="source" name="source" class="form-control" value="<%= knowledge.source || 'admin' %>" required>
+    </div>
+
+    <div class="form-group">
+        <label for="content">内容（content）</label>
+        <textarea id="content" name="content" class="form-control" required><%= knowledge.content || '' %></textarea>
+    </div>
+
+    <div class="action-bar">
+        <button type="submit" class="btn btn-primary">
+            <i class="fas fa-save"></i> <%= isEditing ? '保存修改' : '创建' %>
+        </button>
+        <a href="/admin/knowledge" class="btn btn-secondary">返回列表</a>
+    </div>
+</form>

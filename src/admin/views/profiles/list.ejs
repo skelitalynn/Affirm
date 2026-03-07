@@ -1,5 +1,3 @@
-<% layout('layout') -%>
-
 <div class="action-bar">
     <a href="/admin/profiles/new" class="btn btn-primary">
         <i class="fas fa-plus"></i> 创建Profile
@@ -10,10 +8,10 @@
     <thead>
         <tr>
             <th>ID</th>
-            <th>名称</th>
-            <th>描述</th>
-            <th>关键词</th>
-            <th>默认</th>
+            <th>User ID</th>
+            <th>目标</th>
+            <th>状态</th>
+            <th>偏好</th>
             <th>创建时间</th>
             <th>操作</th>
         </tr>
@@ -23,20 +21,14 @@
             <% profiles.forEach(profile => { %>
                 <tr>
                     <td><%= profile.id %></td>
-                    <td><strong><%= profile.name %></strong></td>
-                    <td><%= profile.description %></td>
+                    <td><%= profile.user_id %></td>
+                    <td><%= profile.goals || '-' %></td>
+                    <td><%= profile.status || '-' %></td>
                     <td>
-                        <% if (profile.keywords && profile.keywords.length > 0) { %>
-                            <%= profile.keywords.join(', ') %>
+                        <% if (profile.preferences) { %>
+                            <code><%= JSON.stringify(profile.preferences) %></code>
                         <% } else { %>
                             <span class="text-muted">无</span>
-                        <% } %>
-                    </td>
-                    <td>
-                        <% if (profile.is_default) { %>
-                            <span class="badge badge-success">是</span>
-                        <% } else { %>
-                            <span class="badge badge-secondary">否</span>
                         <% } %>
                     </td>
                     <td><%= new Date(profile.created_at).toLocaleString() %></td>

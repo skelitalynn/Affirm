@@ -282,7 +282,7 @@ if (require.main === module) {
     require('dotenv').config();
     
     // 加载项目配置（确保加载正确的环境变量）
-    const configPath = require.resolve('./src/config');
+    const configPath = require.resolve('../src/config');
     delete require.cache[configPath]; // 清除缓存
     require(configPath);
     

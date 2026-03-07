@@ -163,6 +163,17 @@ body {
     background: var(--warning-color);
 }
 
+.btn-edit {
+    background: var(--warning-color);
+}
+
+.action-bar {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
 /* 表格样式 */
 .data-table {
     width: 100%;
@@ -192,6 +203,7 @@ body {
 .data-table .actions {
     display: flex;
     gap: 8px;
+    flex-wrap: wrap;
 }
 
 /* 统计卡片 */
@@ -290,6 +302,23 @@ textarea.form-control {
     background: #f8d7da;
     color: #721c24;
     border: 1px solid #f5c6cb;
+}
+
+.text-center {
+    text-align: center;
+}
+
+.text-muted {
+    color: var(--gray-color);
+}
+
+code {
+    display: inline-block;
+    max-width: 360px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
 }
 
 /* 响应式设计 */

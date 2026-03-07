@@ -5,11 +5,15 @@
  */
 require('dotenv').config();
 const express = require('express');
+const expressLayouts = require('express-ejs-layouts');
 const helmet = require('helmet');
 const cors = require('cors');
 const path = require('path');
 const config = require('../config');
 const { healthCheck } = require('../health');
+const Profile = require('../models/profile');
+const Knowledge = require('../models/knowledge');
+const Message = require('../models/message');
 const authMiddleware = require('./middleware/auth');
 const profilesRouter = require('./routes/profiles');
 const knowledgeRouter = require('./routes/knowledge');
@@ -22,9 +26,13 @@ const PORT = process.env.ADMIN_PORT || 3001;
 app.use(helmet());
 
 // CORS：仅允许配置的来源，不再通配符（修复 2.3）
-const allowedOrigins = process.env.CORS_ORIGINS
-    ? process.env.CORS_ORIGINS.split(',').map(o => o.trim())
-    : [`http://localhost:${PORT}`];
+const configuredOrigins = process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
+    : [];
+const allowedOrigins = Array.from(new Set([
+    `http://localhost:${PORT}`,
+    ...configuredOrigins
+]));
 
 app.use(cors({
     origin: (origin, callback) => {
@@ -85,6 +93,17 @@ app.use('/static', express.static(path.join(__dirname, 'static')));
 // 设置视图引擎（使用EJS）
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
+app.use(expressLayouts);
+app.set('layout', 'layout');
+
+async function getSafeCount(model, fallback = 0) {
+    try {
+        return await model.count();
+    } catch (error) {
+        console.error('统计数据获取失败:', error.message);
+        return fallback;
+    }
+}
 
 // 认证中间件（所有 /admin 路由）
 app.use('/admin', authMiddleware);
@@ -93,12 +112,29 @@ app.use('/admin', authMiddleware);
 app.use('/admin', csrfProtection);
 
 // 路由
-app.get('/admin', (req, res) => {
-    res.render('dashboard', {
-        title: 'Affirm后台管理',
-        user: req.user,
-        version: '1.0.0'
-    });
+app.get('/admin', async (req, res) => {
+    try {
+        const [profilesCount, knowledgeCount, messagesCount] = await Promise.all([
+            getSafeCount(Profile),
+            getSafeCount(Knowledge),
+            getSafeCount(Message)
+        ]);
+
+        res.render('dashboard', {
+            title: 'Affirm后台管理',
+            user: req.user,
+            version: '1.0.0',
+            stats: {
+                profilesCount,
+                knowledgeCount,
+                messagesCount
+            },
+            recentActivity: []
+        });
+    } catch (error) {
+        console.error('仪表盘渲染失败:', error);
+        res.status(500).render('500', { error: '仪表盘渲染失败', layout: false });
+    }
 });
 
 app.use('/admin/profiles', profilesRouter);
@@ -107,19 +143,19 @@ app.use('/admin/knowledge', knowledgeRouter);
 // 健康检查端点：接入 health.js 实际检查数据库状态（修复 3.4）
 app.get('/health', async (req, res) => {
     const result = await healthCheck();
-    const statusCode = result.status === 'healthy' ? 200 : 503;
+    const statusCode = result.status === 'degraded' ? 503 : 200;
     res.status(statusCode).json(result);
 });
 
 // 404处理（修复 4.4：视图文件已创建）
 app.use((req, res) => {
-    res.status(404).render('404', { url: req.url });
+    res.status(404).render('404', { url: req.url, layout: false });
 });
 
 // 错误处理中间件（修复 4.4：视图文件已创建）
 app.use((err, req, res, next) => {
     console.error('管理服务器错误:', err.stack);
-    res.status(500).render('500', { error: err.message });
+    res.status(500).render('500', { error: err.message, layout: false });
 });
 
 // 启动服务器

@@ -114,7 +114,25 @@ class TelegramService {
         });
 
         // 健康检查端点
-        app.get('/health', (req, res) => res.json({ status: 'ok', mode: 'webhook' }));
+        app.get('/health', (req, res) => {
+            const embeddingEnabled = Boolean(config.embedding && config.embedding.apiKey);
+            const payload = {
+                status: 'ok',
+                mode: 'webhook',
+                capabilities: {
+                    semanticSearch: embeddingEnabled ? 'enabled' : 'degraded'
+                }
+            };
+
+            if (!embeddingEnabled) {
+                payload.warnings = [{
+                    code: 'EMBEDDING_API_KEY_MISSING',
+                    message: 'EMBEDDING_API_KEY 未配置，RAG/语义检索已降级（fallback 模式）'
+                }];
+            }
+
+            res.json(payload);
+        });
 
         const port = config.webhook.port;
         await new Promise((resolve) => {

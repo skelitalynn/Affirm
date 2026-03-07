@@ -107,7 +107,7 @@ async function runDiagnostics() {
     
     try {
         // 清除配置模块缓存
-        const configPath = require.resolve('./skills/notion/config');
+        const configPath = require.resolve('../skills/notion/config');
         delete require.cache[configPath];
         
         const skillConfig = require('../skills/notion/config');
@@ -130,7 +130,7 @@ async function runDiagnostics() {
     
     try {
         // 清除客户端模块缓存
-        const clientPath = require.resolve('./skills/notion/client');
+        const clientPath = require.resolve('../skills/notion/client');
         delete require.cache[clientPath];
         
         const NotionClient = require('../skills/notion/client');
@@ -164,9 +164,9 @@ async function runDiagnostics() {
         } else {
             // 清除所有相关模块缓存
             const modulesToClear = [
-                './skills/notion/config',
-                './skills/notion/client', 
-                './src/services/notion'
+                '../skills/notion/config',
+                '../skills/notion/client', 
+                '../src/services/notion'
             ];
             
             modulesToClear.forEach(modulePath => {
@@ -235,7 +235,7 @@ async function runDiagnostics() {
         console.log(`   ${colors.green}✓${colors.reset} TelegramService模块可加载`);
         
         // 检查导入
-        const source = fs.readFileSync(path.join(__dirname, 'src/services/telegram.js'), 'utf8');
+        const source = fs.readFileSync(path.join(__dirname, '../src/services/telegram.js'), 'utf8');
         const importsNotion = source.includes("require('./notion')") || source.includes("require('../services/notion')");
         
         if (importsNotion) {

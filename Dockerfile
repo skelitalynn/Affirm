@@ -23,8 +23,8 @@ RUN chown -R nodejs:nodejs /app
 # 切换到非root用户
 USER nodejs
 
-# 暴露端口
-EXPOSE 3000
+# 暴露端口（admin / webhook）
+EXPOSE 3001 3002
 
 # 启动命令
 CMD ["node", "src/index.js"]

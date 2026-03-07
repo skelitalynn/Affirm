@@ -131,6 +131,13 @@ GITHUB_REPO=Affirm
 
 完整配置说明见 `docs/project/项目概述.md`
 
+## 🔌 端口策略
+
+- `Polling 模式`（`WEBHOOK_ENABLED=false`）：Telegram Bot 进程不提供对外 HTTP 端口。
+- `Webhook 模式`（`WEBHOOK_ENABLED=true`）：Webhook 服务监听 `3002`，健康检查使用 `http://localhost:3002/health`。
+- `Admin 管理后台`：独立服务端口 `3001`（命令：`npm run admin`）。
+- Docker 侧统一暴露 `3001`（admin）和 `3002`（webhook），不再暴露无效的 `3000`。
+
 ## 📅 开发计划
 
 ### 7天自动化开发

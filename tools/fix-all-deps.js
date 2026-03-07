@@ -74,13 +74,13 @@ envChecks.forEach(check => {
 console.log('\n4. 📝 检查Notion技能集成...');
 try {
     // 测试Notion模块加载
-    delete require.cache[require.resolve('./src/services/notion')];
+    delete require.cache[require.resolve('../src/services/notion')];
     const NotionService = require('../src/services/notion');
     const notionService = new NotionService();
     console.log('   ✅ NotionService可加载和实例化');
     
     // 检查技能客户端
-    const clientPath = path.join(__dirname, 'skills/notion/client.js');
+    const clientPath = path.join(__dirname, '../skills/notion/client.js');
     if (fs.existsSync(clientPath)) {
         const clientContent = fs.readFileSync(clientPath, 'utf8');
         const exportsClient = clientContent.includes('module.exports') || clientContent.includes('exports.');
@@ -100,8 +100,7 @@ try {
     
     // 检查向量嵌入服务
     const embeddingService = require('../src/services/embedding');
-    const embedding = new embeddingService();
-    console.log(`   ✅ 向量嵌入服务: ${embedding.isAvailable() ? '可用' : '不可用（降级模式）'}`);
+    console.log(`   ✅ 向量嵌入服务: ${embeddingService.isAvailable() ? '可用' : '不可用（降级模式）'}`);
 } catch (error) {
     console.log(`   ❌ AI配置错误: ${error.message}`);
 }
