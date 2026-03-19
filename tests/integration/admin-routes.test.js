@@ -166,9 +166,9 @@ describe('Admin Routes Integration', () => {
     it('should chunk long knowledge imports from admin route', async () => {
         const importSource = 'admin-import-chunking-test';
         const importContent = [
-            '这是第一段较长的知识内容，用来验证后台导入时会先按空行分段，然后再进行自动切片和合并处理。'.repeat(3),
+            '这是第一段较长的知识内容，用来验证后台导入时会先按空行分段，然后再进行自动切片和合并处理。'.repeat(8),
             '',
-            '这是第二段内容，同样故意写得比较长，用来确保 chunking 服务会生成多个知识片段，而不是只保存一条大文本。'.repeat(3)
+            '这是第二段内容，同样故意写得比较长，用来确保 chunking 服务会生成多个知识片段，而不是只保存一条大文本。'.repeat(8)
         ].join('\n');
 
         const importRes = await request(app)

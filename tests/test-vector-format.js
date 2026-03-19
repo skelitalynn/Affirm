@@ -1,6 +1,6 @@
 // 测试pgvector向量格式
 require('dotenv').config();
-const { db } = require('./src/db/connection');
+const { db } = require('../src/db/connection');
 
 async function testVectorFormat() {
     console.log('🔍 测试pgvector向量格式');

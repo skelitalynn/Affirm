@@ -1,8 +1,8 @@
 // 验证向量修复方案
 require('dotenv').config();
-const { db } = require('./src/db/connection');
-const Message = require('./src/models/message');
-const embeddingService = require('./src/services/embedding');
+const { db } = require('../src/db/connection');
+const Message = require('../src/models/message');
+const embeddingService = require('../src/services/embedding');
 
 async function validateVectorFix() {
     console.log('🔍 验证向量修复方案');

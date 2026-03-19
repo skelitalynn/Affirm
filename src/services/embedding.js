@@ -38,6 +38,30 @@ class EmbeddingService {
     }
 
     /**
+     * 规范化向量维度，确保与数据库列维度一致
+     * @param {Array<number>} embeddingArray
+     * @returns {Array<number>}
+     */
+    normalizeEmbeddingDimensions(embeddingArray) {
+        if (!Array.isArray(embeddingArray)) {
+            return [];
+        }
+
+        if (embeddingArray.length !== this.dimensions) {
+            console.warn(`⚠️ 嵌入维度不匹配: 期望 ${this.dimensions}, 实际 ${embeddingArray.length}`);
+            if (embeddingArray.length > this.dimensions) {
+                embeddingArray.length = this.dimensions;
+            } else {
+                while (embeddingArray.length < this.dimensions) {
+                    embeddingArray.push(0);
+                }
+            }
+        }
+
+        return embeddingArray;
+    }
+
+    /**
      * 生成文本的向量嵌入
      * @param {string} text - 要嵌入的文本
      * @returns {Promise<Array<number>|null>} 向量数组，null表示不可用
@@ -64,20 +88,7 @@ class EmbeddingService {
                 encoding_format: 'float'
             });
 
-            const embeddingArray = response.data[0].embedding;
-            // 确保维度匹配
-            if (embeddingArray.length !== this.dimensions) {
-                console.warn(`⚠️ 嵌入维度不匹配: 期望 ${this.dimensions}, 实际 ${embeddingArray.length}`);
-                // 截断或填充（简单截断）
-                if (embeddingArray.length > this.dimensions) {
-                    embeddingArray.length = this.dimensions;
-                } else {
-                    // 填充零
-                    while (embeddingArray.length < this.dimensions) {
-                        embeddingArray.push(0);
-                    }
-                }
-            }
+            const embeddingArray = this.normalizeEmbeddingDimensions(response.data[0].embedding);
             
             return embeddingArray;
         } catch (error) {
@@ -107,62 +118,63 @@ class EmbeddingService {
      * @returns {Promise<Array<Array<number>|null>>} 向量数组（null表示不可用）
      */
     async generateEmbeddings(texts) {
+        const originalCount = Array.isArray(texts) ? texts.length : 0;
+
         try {
             if (!Array.isArray(texts) || texts.length === 0) {
                 throw new Error('文本数组不能为空');
             }
 
-            // 过滤空文本
-            const validTexts = texts.filter(text => text && text.trim().length > 0);
-            if (validTexts.length === 0) {
+            const indexedTexts = texts.map((text, index) => ({
+                index,
+                text: typeof text === 'string' ? text : ''
+            }));
+
+            const validEntries = indexedTexts.filter((entry) => entry.text.trim().length > 0);
+            if (validEntries.length === 0) {
                 throw new Error('没有有效的文本');
             }
+
+            // 保持与输入数组长度对齐，空文本位置返回 null
+            const embeddingsByIndex = new Array(texts.length).fill(null);
 
             // 如果没有配置API客户端，返回null数组（禁用语义检索）
             if (!this.openai) {
                 console.warn('⚠️ 向量嵌入API未配置，返回null数组（禁用语义检索）');
-                return new Array(validTexts.length).fill(null);
+                return embeddingsByIndex;
             }
 
             // 限制批处理大小
             const batchSize = 10;
             const batches = [];
-            for (let i = 0; i < validTexts.length; i += batchSize) {
-                batches.push(validTexts.slice(i, i + batchSize));
+            for (let i = 0; i < validEntries.length; i += batchSize) {
+                batches.push(validEntries.slice(i, i + batchSize));
             }
 
-            const allEmbeddings = [];
             for (const batch of batches) {
+                const batchInputs = batch.map((entry) => (
+                    entry.text.length > 8000 ? entry.text.substring(0, 8000) : entry.text
+                ));
+
                 const response = await this.openai.embeddings.create({
                     model: this.model,
-                    input: batch,
+                    input: batchInputs,
                     dimensions: this.dimensions,
                     encoding_format: 'float'
                 });
 
-                const batchEmbeddings = response.data.map(item => {
-                    let embeddingArray = item.embedding;
-                    // 确保维度匹配
-                    if (embeddingArray.length !== this.dimensions) {
-                        console.warn(`⚠️ 嵌入维度不匹配: 期望 ${this.dimensions}, 实际 ${embeddingArray.length}`);
-                        if (embeddingArray.length > this.dimensions) {
-                            embeddingArray.length = this.dimensions;
-                        } else {
-                            while (embeddingArray.length < this.dimensions) {
-                                embeddingArray.push(0);
-                            }
-                        }
-                    }
-                    return embeddingArray; // 返回数组而不是Vector
+                response.data.forEach((item, batchIndex) => {
+                    const entry = batch[batchIndex];
+                    const embeddingArray = this.normalizeEmbeddingDimensions(item.embedding);
+                    embeddingsByIndex[entry.index] = embeddingArray;
                 });
-                allEmbeddings.push(...batchEmbeddings);
             }
 
-            return allEmbeddings;
+            return embeddingsByIndex;
         } catch (error) {
             console.error('❌ 批量生成向量嵌入失败:', error.message);
             // API调用失败时返回null数组
-            return new Array(validTexts.length).fill(null);
+            return originalCount > 0 ? new Array(originalCount).fill(null) : [];
         }
     }
 

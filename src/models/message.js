@@ -188,10 +188,19 @@ class Message {
         const { content, metadata } = updates;
         
         // 如果更新了内容，需要重新生成向量嵌入
-        let embedding = null;
+        let embeddingForQuery = null;
         if (content && content.trim().length > 0) {
             try {
-                embedding = await embeddingService.generateEmbedding(content);
+                const embedding = await embeddingService.generateEmbedding(content);
+                if (embedding !== null && embedding !== undefined) {
+                    if (Array.isArray(embedding)) {
+                        embeddingForQuery = embeddingService.toVectorSql(embedding);
+                    } else if (typeof embedding === 'string') {
+                        embeddingForQuery = embedding;
+                    } else {
+                        console.warn('⚠️ 未知的嵌入格式，跳过embedding更新:', typeof embedding);
+                    }
+                }
             } catch (error) {
                 console.error('❌ 重新生成向量嵌入失败:', error.message);
                 // 不更新嵌入，保持原样
@@ -214,9 +223,9 @@ class Message {
             paramIndex++;
         }
 
-        if (embedding) {
+        if (embeddingForQuery) {
             fields.push(`embedding = $${paramIndex}::vector`);
-            values.push(embedding);
+            values.push(embeddingForQuery);
             paramIndex++;
         }
 

@@ -247,7 +247,7 @@ const userCount = await User.count();
 
 **参数**:
 - `knowledgeData` (Object):
-  - `user_id` (string, required): 用户UUID
+  - `user_id` (string, optional): 用户UUID（为空表示全局知识）
   - `content` (string, required): 知识内容
   - `source` (string, optional, default: 'user_input'): 来源
 
@@ -264,13 +264,17 @@ const userCount = await User.count();
 
 **返回值**: Promise<Array> - 相关知识和相似度分数
 
-##### `Knowledge.createBatch(knowledgeArray)`
+##### `Knowledge.createBatch(knowledgeArray, options)`
 批量创建知识片段。
 
 **参数**:
 - `knowledgeArray` (Array<Object>, required): 知识数据数组
+- `options` (Object, optional):
+  - `detailed` (boolean, optional, default: `false`): 是否返回成功/失败明细
 
-**返回值**: Promise<Array> - 创建的知识片段数组
+**返回值**:
+- 默认：`Promise<Array>` - 创建成功的知识片段数组
+- `detailed=true`：`Promise<Object>`，包含 `total/successCount/failureCount/successfulItems/failedItems`
 
 ---
 
@@ -285,7 +289,9 @@ const userCount = await User.count();
 **参数**:
 - `text` (string, required): 要嵌入的文本
 
-**返回值**: Promise<Array<number>> - 向量嵌入
+**返回值**:
+- 正常：`Promise<Array<number>>` - 向量嵌入
+- embedding 不可用：`Promise<null>`（降级）
 
 **示例**:
 ```javascript
@@ -298,7 +304,7 @@ const embedding = await embeddingService.generateEmbedding('这是一个测试�
 **参数**:
 - `texts` (Array<string>, required): 文本数组
 
-**返回值**: Promise<Array<Array<number>>> - 向量嵌入数组
+**返回值**: `Promise<Array<Array<number>|null>>` - 与输入数组等长，失败或空文本位置返回 `null`
 
 ##### `embeddingService.cosineSimilarity(vec1, vec2)`
 计算两个向量的余弦相似度。
@@ -575,25 +581,18 @@ try {
 
 ---
 
-## 版本历史
+## 状态标注（当前）
 
-- **v1.0.0** (2026-02-27): 初始版本，完成Day 2数据层开发
-- 支持用户、画像、消息、知识片段的基本CRUD操作
-- 集成向量嵌入和语义搜索功能
-- 包含完整的错误处理和事务支持
-
----
-
-## 后续计划
-
-1. **Day 3**: OpenClaw技能集成
-2. **Day 4**: Notion集成和归档功能
-3. **Day 5**: 后台管理界面
-4. **Day 6**: 性能优化和测试
-5. **Day 7**: 部署和监控
+- 数据层 CRUD：✅ 已实现
+- 语义检索（`Message` / `Knowledge`）：✅ 已实现
+- 批量导入切分（`ChunkingService`）：✅ 已实现
+- 检索来源可解释性（citation）：⚠️ 待实现
+- 混合检索（Hybrid Search）：⚠️ 待实现
+- Query Rewrite：⚠️ 待实现
+- Reranker：⚠️ 待实现
 
 ---
 
-**文档版本**: 1.0.0  
-**最后更新**: 2026-02-27  
+**文档版本**: 1.1.0  
+**最后更新**: 2026-03-19  
 **维护者**: Affirm开发团队

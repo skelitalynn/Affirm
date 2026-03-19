@@ -61,23 +61,39 @@ class Knowledge {
      * @param {Array<Object>} knowledgeArray - 知识数据数组
      * @returns {Promise<Array<Object>>} 创建的知识片段数组
      */
-    static async createBatch(knowledgeArray) {
+    static async createBatch(knowledgeArray, options = {}) {
         if (!Array.isArray(knowledgeArray) || knowledgeArray.length === 0) {
             throw new Error('知识数据数组不能为空');
         }
 
-        const results = [];
-        for (const knowledgeData of knowledgeArray) {
+        const successfulItems = [];
+        const failedItems = [];
+
+        for (const [index, knowledgeData] of knowledgeArray.entries()) {
             try {
                 const result = await this.create(knowledgeData);
-                results.push(result);
+                successfulItems.push(result);
             } catch (error) {
                 console.error(`❌ 创建知识片段失败 (跳过):`, error.message);
-                // 继续处理其他项目
+                failedItems.push({
+                    index,
+                    source: knowledgeData?.source || null,
+                    error: error.message
+                });
             }
         }
 
-        return results;
+        if (options && options.detailed === true) {
+            return {
+                total: knowledgeArray.length,
+                successCount: successfulItems.length,
+                failureCount: failedItems.length,
+                successfulItems,
+                failedItems
+            };
+        }
+
+        return successfulItems;
     }
 
     /**
@@ -149,6 +165,17 @@ class Knowledge {
             return [];
         }
 
+        if (queryEmbedding === null) {
+            console.log('ℹ️  向量嵌入不可用，知识语义搜索被禁用');
+            return [];
+        }
+
+        const queryVector = embeddingService.toVectorSql(queryEmbedding);
+        if (!queryVector) {
+            console.warn('⚠️  无法转换查询向量格式，返回空数组');
+            return [];
+        }
+
         // 构建查询
         let query;
         let values;
@@ -158,22 +185,24 @@ class Knowledge {
                 SELECT *, 
                        (1 - (embedding <=> $1::vector)) as similarity
                 FROM knowledge_chunks 
-                WHERE user_id = $2 
+                WHERE embedding IS NOT NULL
+                  AND user_id = $2 
                   AND (1 - (embedding <=> $1::vector)) > $3
                 ORDER BY embedding <=> $1::vector
                 LIMIT $4
             `;
-            values = [queryEmbedding, userId, similarityThreshold, limit];
+            values = [queryVector, userId, similarityThreshold, limit];
         } else {
             query = `
                 SELECT *, 
                        (1 - (embedding <=> $1::vector)) as similarity
                 FROM knowledge_chunks 
-                WHERE (1 - (embedding <=> $1::vector)) > $2
+                WHERE embedding IS NOT NULL
+                  AND (1 - (embedding <=> $1::vector)) > $2
                 ORDER BY embedding <=> $1::vector
                 LIMIT $3
             `;
-            values = [queryEmbedding, similarityThreshold, limit];
+            values = [queryVector, similarityThreshold, limit];
         }
 
         try {
@@ -195,10 +224,19 @@ class Knowledge {
         const { content, source } = updates;
         
         // 如果更新了内容，需要重新生成向量嵌入
-        let embedding = null;
+        let embeddingForQuery = null;
         if (content && content.trim().length > 0) {
             try {
-                embedding = await embeddingService.generateEmbedding(content);
+                const embedding = await embeddingService.generateEmbedding(content);
+                if (embedding !== null && embedding !== undefined) {
+                    if (Array.isArray(embedding)) {
+                        embeddingForQuery = embeddingService.toVectorSql(embedding);
+                    } else if (typeof embedding === 'string') {
+                        embeddingForQuery = embedding;
+                    } else {
+                        console.warn('⚠️ 未知的嵌入格式，跳过embedding更新:', typeof embedding);
+                    }
+                }
             } catch (error) {
                 console.error('❌ 重新生成向量嵌入失败:', error.message);
                 // 不更新嵌入，保持原样
@@ -221,9 +259,9 @@ class Knowledge {
             paramIndex++;
         }
 
-        if (embedding) {
+        if (embeddingForQuery) {
             fields.push(`embedding = $${paramIndex}::vector`);
-            values.push(embedding);
+            values.push(embeddingForQuery);
             paramIndex++;
         }
 

@@ -6,11 +6,17 @@ const router = express.Router();
 const Knowledge = require('../../models/knowledge');
 const chunkingService = require('../../services/chunking');
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function getFlashFromQuery(query = {}) {
     const flash = {};
     if (query.success) flash.success = query.success;
     if (query.error) flash.error = query.error;
     return flash;
+}
+
+function isValidUuid(value) {
+    return UUID_PATTERN.test(value);
 }
 
 function normalizeKnowledgePayload(body = {}) {
@@ -133,8 +139,13 @@ router.post('/import', async (req, res) => {
             return res.redirect('/admin/knowledge/import?error=' + encodeURIComponent('请输入要导入的内容'));
         }
 
+        const normalizedUserId = user_id ? user_id.trim() : null;
+        if (normalizedUserId && !isValidUuid(normalizedUserId)) {
+            return res.redirect('/admin/knowledge/import?error=' + encodeURIComponent('User ID 必须是有效 UUID'));
+        }
+
         const knowledgeItems = chunkingService.buildKnowledgeItems({
-            userId: user_id ? user_id.trim() : null,
+            userId: normalizedUserId,
             source: source ? source.trim() : 'admin-import',
             text: items
         });
@@ -143,11 +154,24 @@ router.post('/import', async (req, res) => {
             return res.redirect('/admin/knowledge/import?error=' + encodeURIComponent('未生成有效的知识片段，请检查输入内容'));
         }
 
-        const createdItems = await Knowledge.createBatch(knowledgeItems);
-        const successCount = createdItems.length;
-        const errorCount = knowledgeItems.length - successCount;
+        const result = await Knowledge.createBatch(knowledgeItems, { detailed: true });
+        const { total, successCount, failureCount, failedItems } = result;
 
-        res.redirect('/admin/knowledge?success=' + encodeURIComponent(`批量导入完成: 已切分 ${knowledgeItems.length} 个片段，${successCount} 成功，${errorCount} 失败`));
+        if (failureCount > 0) {
+            const errorMessages = Array.from(new Set(
+                failedItems.map(item => item.error).filter(Boolean)
+            )).slice(0, 3);
+
+            const errorDetails = errorMessages.length > 0
+                ? `；失败原因：${errorMessages.join('；')}`
+                : '';
+
+            return res.redirect('/admin/knowledge?error=' + encodeURIComponent(
+                `批量导入部分失败: 共 ${total} 个片段，${successCount} 成功，${failureCount} 失败${errorDetails}`
+            ));
+        }
+
+        res.redirect('/admin/knowledge?success=' + encodeURIComponent(`批量导入完成: 共 ${total} 个片段，全部成功`));
     } catch (error) {
         console.error('批量导入失败:', error);
         res.redirect('/admin/knowledge/import?error=' + encodeURIComponent('批量导入失败'));

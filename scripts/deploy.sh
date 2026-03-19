@@ -32,8 +32,8 @@ check_environment() {
         echo -e "${YELLOW}⚠️  TELEGRAM_BOT_TOKEN未设置${NC}"
     fi
     
-    if [ -z "$OPENAI_API_KEY" ]; then
-        echo -e "${YELLOW}⚠️  OPENAI_API_KEY未设置${NC}"
+    if [ -z "$DEEPSEEK_API_KEY" ] && [ -z "$CLAUDE_API_KEY" ] && [ -z "$OPENAI_API_KEY" ]; then
+        echo -e "${YELLOW}⚠️  未检测到可用AI密钥（DEEPSEEK_API_KEY / CLAUDE_API_KEY / OPENAI_API_KEY）${NC}"
     fi
     
     echo -e "${GREEN}✅ 环境检查完成${NC}"
@@ -79,7 +79,7 @@ check_status() {
     fi
     
     # 检查应用
-    if curl -s http://localhost:3000/health | grep -q "healthy"; then
+    if curl -s http://localhost:3000/health | grep -qE '"status":"(healthy|healthy_with_warnings)"'; then
         echo -e "${GREEN}✅ 应用运行正常${NC}"
     else
         echo -e "${YELLOW}⚠️  应用可能未完全启动${NC}"

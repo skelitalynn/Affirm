@@ -100,7 +100,7 @@ Affirm 是一个基于 Telegram Bot 的 AI 显化导师助手。用户通过 Tel
                                ▼
                     ┌─────────────────────┐
                     │  BullMQ Queue       │
-                    │  add('message', {}) │
+                    │ add('processMessage', {}) │
                     └──────────┬──────────┘
                                │ job
                                ▼
@@ -219,33 +219,31 @@ AIService
 
 防止同一用户的并发消息竞争 AI 上下文，保证同一用户的消息严格串行处理，同时不阻塞其他用户。
 
-### 结构
+### 结构（当前实现）
 
-```
-MessageQueue（进程级单例）
+```text
+MessageQueue（统一门面）
   │
-  ├── userQueues: Map<userId, Promise链>
-  │     每个用户独立队列，互不影响
+  ├── BullMQQueue（默认）
+  │     ├── Queue + Worker（concurrency: 1）
+  │     ├── Redis 持久化
+  │     └── job: processMessage
   │
-  ├── enqueue(userId, processFn, context)
-  │     将任务挂载到该用户的 Promise 链末尾
-  │
-  ├── 超时控制：30 秒（defaultTimeout）
-  │
-  └── 统计监控
-        ├── totalProcessed   累计处理消息数
-        ├── activeQueues     当前活跃用户队列数
-        ├── maxQueueSize     历史最大队列深度
-        └── timeouts         超时次数
+  └── InMemoryQueue（降级）
+        ├── userQueues: Map<userId, queue[]>
+        ├── 单用户串行处理
+        ├── 超时控制：30 秒（defaultTimeout）
+        └── 空队列自动清理
 ```
 
-### 当前限制与升级路线
+### 降级与边界
 
-
-| 限制    | 说明        | 升级方案（见架构升级评估报告）            |
-| ----- | --------- | -------------------------- |
-| 纯内存实现 | 进程重启后队列丢失 | 替换为 BullMQ + Redis         |
-| 单进程   | 无法水平扩展    | 配合 Webhook + BullMQ Worker |
+| 场景 | 当前行为 |
+|------|----------|
+| Redis 可用 | 使用 BullMQ 持久化队列 |
+| Redis 不可用 / BullMQ 初始化失败 | 自动降级为内存队列，不阻断主流程 |
+| 进程重启（内存降级模式） | 内存队列任务会丢失（⚠️ 降级模式固有限制） |
+| 多实例扩容 | 推荐 BullMQ + Webhook；内存降级模式仅适合单实例兜底 |
 
 
 ---
@@ -320,17 +318,14 @@ embedding 生成失败时，`embedding` 写入 `NULL`。消息仍正常存储，
 ```
 用户消息
   │
-  ▼（Step 3a）
-EmbeddingService.generateEmbedding(userMessage)
-  │
-  ├──► Knowledge.semanticSearch(embedding, userId, topK=5, threshold=0.6)
-  │         └── SELECT content FROM knowledge_chunks
-  │               WHERE user_id = ?
-  │               ORDER BY embedding <=> $query_vector
-  │               LIMIT 5
-  │
-  └──► Message.semanticSearchByText(userMessage, userId, topK=3, threshold=0.65)
-            └── 语义相似的历史消息（跨越时序上下文窗口的长期记忆）
+  ▼（Step 3a，并行）
+Knowledge.semanticSearch(userMessage, userId, topK=5, threshold=0.6)
+  └── 内部生成 query embedding 并检索 knowledge_chunks
+      (embedding 不可用时返回空数组)
+
+Message.semanticSearchByText(userMessage, userId, topK=3, threshold=0.65)
+  └── 内部生成 query embedding 并检索 messages
+      (embedding 不可用时返回空数组)
 
   ▼（Step 4）
 构建 AI Context：
@@ -540,18 +535,20 @@ sync_jobs              (独立表，记录归档任务状态)
 **目录**：`src/admin/`
 
 
-| 路由                  | 功能              |
-| ------------------- | --------------- |
-| `GET /`             | Dashboard 概览    |
-| `GET /profiles`     | 用户画像列表          |
-| `PUT /profiles/:id` | 更新用户画像（字段白名单校验） |
-| `GET /knowledge`    | 知识库管理           |
-| `POST /knowledge`   | 添加知识条目          |
-| `GET /knowledge/import` | 批量导入知识页面      |
-| `POST /knowledge/import` | 批量导入知识并自动切分为 chunk |
+| 路由（完整前缀） | 功能 |
+|---|---|
+| `GET /admin` | Dashboard 概览 |
+| `GET /admin/profiles` | 用户画像列表 |
+| `POST /admin/profiles` | 创建画像 |
+| `POST /admin/profiles/:id/update` | 更新画像（字段白名单校验） |
+| `POST /admin/profiles/:id/delete` | 删除画像 |
+| `GET /admin/knowledge` | 知识库管理 |
+| `POST /admin/knowledge` | 添加知识条目 |
+| `GET /admin/knowledge/import` | 批量导入页面 |
+| `POST /admin/knowledge/import` | 批量导入并自动切分 chunk |
 
 
-**认证**：JWT Bearer Token（`src/admin/middleware/auth.js`）
+**认证**：HTTP Basic Auth（用户名固定 `admin` + `ADMIN_PASSWORD`）
 
 **安全修复（已完成）**：
 
@@ -568,11 +565,13 @@ sync_jobs              (独立表，记录归档任务状态)
 
 ```
 Docker Compose
-  ├── app          Node.js 18（src/index.js）
-  │                PORT=3000
+  ├── app          Node.js 20（src/index.js）
+  │                Telegram Bot + Webhook（3002）
   │                AI_PROVIDER=deepseek/claude/openai
   │
-  └── postgres     pgvector/pgvector:pg16
+  ├── redis        BullMQ 队列持久化
+  │
+  └── postgres     pgvector/pgvector:pg15
                    数据持久化到 Docker Volume
                    密码通过环境变量注入（非硬编码）
 ```
@@ -582,17 +581,12 @@ Docker Compose
 PM2 配置：`monitoring/ecosystem.config.js`
 日志轮转：`monitoring/logrotate.conf`
 
-### 目标架构（Phase 2，见架构升级评估报告）
+### Webhook / 队列状态
 
-```
-Nginx（SSL 终止）
-  │
-  ├── Express Webhook 端点（POST /webhook/:token）
-  │
-  ├── BullMQ Producer → Redis → BullMQ Worker
-  │
-  └── PostgreSQL + pgvector
-```
+- Webhook 模式：✅ 已实现（`WEBHOOK_ENABLED=true`）
+- BullMQ + Redis：✅ 已实现
+- Redis 不可用降级：✅ 已实现（内存队列兜底）
+- Nginx SSL 反向代理配置：✅ 已提供（`docker/nginx/nginx.conf`）
 
 ---
 

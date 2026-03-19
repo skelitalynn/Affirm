@@ -116,8 +116,7 @@ class ConfigManager extends EventEmitter {
         // 检查必需配置
         const requiredPaths = [
             'telegram.botToken',
-            'database.url',
-            'ai.apiKey'
+            'database.url'
         ];
         
         for (const path of requiredPaths) {
@@ -135,6 +134,12 @@ class ConfigManager extends EventEmitter {
             if (notionToken.includes('your_notion') || notionParentPageId.includes('your_notion')) {
                 result.warnings.push('notion.token和notion.parentPageId使用占位符，归档功能不可用');
             }
+        }
+
+        // AI key 缺失时仅告警，不阻断启动（运行时会降级到静态回复）
+        const aiApiKey = this.get('ai.apiKey');
+        if (!aiApiKey || (typeof aiApiKey === 'string' && aiApiKey.trim() === '')) {
+            result.warnings.push('ai.apiKey 未配置，AI 生成将不可用，系统会降级运行');
         }
         
         // 验证配置值
@@ -191,7 +196,8 @@ class ConfigManager extends EventEmitter {
     _createValidators() {
         return {
             'telegram.botToken': (value) => typeof value === 'string' && value.length > 40 && value.includes(':'),
-            'ai.apiKey': (value) => typeof value === 'string' && value.length > 20 && value.startsWith('sk-'),
+            // 兼容不同 Provider key 格式（不强制 sk- 前缀）
+            'ai.apiKey': (value) => typeof value === 'string' && value.trim().length >= 10,
             'ai.temperature': (value) => typeof value === 'number' && value >= 0 && value <= 2,
             'ai.maxTokens': (value) => typeof value === 'number' && value >= 1 && value <= 4000,
             'app.logLevel': (value) => ['error', 'warn', 'info', 'debug'].includes(value),
