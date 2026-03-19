@@ -1,7 +1,7 @@
 # Affirm 系统架构文档
 
 **版本**：v3.0
-**更新日期**：2026-03-05（Phase 2 完成）
+**更新日期**：2026-03-19
 **状态**：当前生产架构（BullMQ + Webhook 已就绪）
 
 ---
@@ -157,13 +157,15 @@ _processSingleMessage()
 
 ### Bot 命令
 
-| 命令 | 功能 |
-|------|------|
-| `/start` | 欢迎用户，注册用户记录 |
-| `/help` | 显示帮助和命令列表 |
-| `/history` | 查看最近对话（条数可配置） |
-| `/clear` | 清除全部对话历史 |
+
+| 命令             | 功能                 |
+| -------------- | ------------------ |
+| `/start`       | 欢迎用户，注册用户记录        |
+| `/help`        | 显示帮助和命令列表          |
+| `/history`     | 查看最近对话（条数可配置）      |
+| `/clear`       | 清除全部对话历史           |
 | `/archive_now` | 手动触发当日对话归档到 Notion |
+
 
 ---
 
@@ -173,11 +175,13 @@ _processSingleMessage()
 
 通过环境变量 `AI_PROVIDER` 选择当前提供商，所有 Provider 统一使用 `openai` npm 包（OpenAI 兼容 API），无需为每个 Provider 编写独立客户端。
 
-| Provider | 环境变量 | 默认 Base URL | 默认模型 |
-|----------|---------|--------------|---------|
+
+| Provider       | 环境变量               | 默认 Base URL                   | 默认模型                |
+| -------------- | ------------------ | ----------------------------- | ------------------- |
 | `deepseek`（默认） | `DEEPSEEK_API_KEY` | `https://api.deepseek.com/v1` | `deepseek-reasoner` |
-| `claude` | `CLAUDE_API_KEY` | `https://api.aigocode.com/v1` | `claude-sonnet-4-6` |
-| `openai` | `OPENAI_API_KEY` | `https://api.openai.com/v1` | `gpt-4` |
+| `claude`       | `CLAUDE_API_KEY`   | `https://api.aigocode.com/v1` | `claude-sonnet-4-6` |
+| `openai`       | `OPENAI_API_KEY`   | `https://api.openai.com/v1`   | `gpt-4`             |
+
 
 ### AIService 结构（`src/services/ai.js`）
 
@@ -237,10 +241,12 @@ MessageQueue（进程级单例）
 
 ### 当前限制与升级路线
 
-| 限制 | 说明 | 升级方案（见架构升级评估报告）|
-|------|------|------------------------------|
-| 纯内存实现 | 进程重启后队列丢失 | 替换为 BullMQ + Redis |
-| 单进程 | 无法水平扩展 | 配合 Webhook + BullMQ Worker |
+
+| 限制    | 说明        | 升级方案（见架构升级评估报告）            |
+| ----- | --------- | -------------------------- |
+| 纯内存实现 | 进程重启后队列丢失 | 替换为 BullMQ + Redis         |
+| 单进程   | 无法水平扩展    | 配合 Webhook + BullMQ Worker |
+
 
 ---
 
@@ -252,13 +258,15 @@ MessageQueue（进程级单例）
 
 Embedding 使用独立 Provider 配置（`config.embedding`），与主 AI Provider 完全解耦。
 
-| 参数 | 配置 |
-|------|------|
-| 配置来源 | `config.embedding`（独立于 `config.ai`）|
-| 向量维度 | 768（与数据库 `VECTOR(768)` 列一致，由 `EMBEDDING_DIMENSIONS` 控制）|
-| 默认模型 | `text-embedding-3-small`（OpenAI，支持原生 768 维输出）|
-| 默认 Base URL | `https://api.openai.com/v1` |
-| 环境变量 | `EMBEDDING_API_KEY` / `EMBEDDING_MODEL` / `EMBEDDING_BASE_URL` / `EMBEDDING_DIMENSIONS` |
+
+| 参数          | 配置                                                                                      |
+| ----------- | --------------------------------------------------------------------------------------- |
+| 配置来源        | `config.embedding`（独立于 `config.ai`）                                                     |
+| 向量维度        | 768（与数据库 `VECTOR(768)` 列一致，由 `EMBEDDING_DIMENSIONS` 控制）                                 |
+| 默认模型        | `text-embedding-3-small`（OpenAI，支持原生 768 维输出）                                           |
+| 默认 Base URL | `https://api.openai.com/v1`                                                             |
+| 环境变量        | `EMBEDDING_API_KEY` / `EMBEDDING_MODEL` / `EMBEDDING_BASE_URL` / `EMBEDDING_DIMENSIONS` |
+
 
 ### 消息向量写入流程
 
@@ -284,11 +292,28 @@ embedding 生成失败时，`embedding` 写入 `NULL`。消息仍正常存储，
 
 ### 当前状态（Phase 1 已完成）
 
-| 组件 | 实现状态 | 接入状态 |
-|------|---------|---------|
-| `Knowledge.semanticSearch()` | ✅ 已实现 | ✅ 已接入对话链路 |
-| `Message.semanticSearchByText()` | ✅ 已实现 | ✅ 已接入对话链路 |
-| EmbeddingService | ✅ 已实现 | ✅ 独立 Provider 配置 |
+
+| 组件                               | 实现状态  | 接入状态             |
+| -------------------------------- | ----- | ---------------- |
+| `Knowledge.semanticSearch()`     | ✅ 已实现 | ✅ 已接入对话链路        |
+| `Message.semanticSearchByText()` | ✅ 已实现 | ✅ 已接入对话链路        |
+| EmbeddingService                 | ✅ 已实现 | ✅ 独立 Provider 配置 |
+| ChunkingService                  | ✅ 已实现 | ✅ Admin 批量导入接入 |
+
+
+### RAG 定位
+
+当前架构不是“纯文档问答型 RAG”，而是“对话式 RAG + 语义记忆”：
+
+- `knowledge_chunks`：用户录入的外部知识，作为知识库检索源
+- `messages`：历史对话消息，作为长期语义记忆检索源
+- `recentMessages`：最近 N 条消息，作为短期时序上下文
+
+也就是说，Affirm 当前的回答链路同时依赖三类上下文：
+
+1. 最近对话历史（短期记忆）
+2. 知识库语义检索结果（外部知识）
+3. 历史消息语义检索结果（长期记忆）
 
 ### RAG 架构
 
@@ -322,17 +347,90 @@ AIService.prepareMessages(context)
 
 ### RAG 检索参数
 
-| 参数 | 知识库检索 | 历史消息检索 |
-|------|-----------|------------|
-| topK | 5 | 3 |
-| 相似度阈值 | 0.6 | 0.65 |
-| 距离度量 | 余弦相似度（`<=>` 操作符） | 余弦相似度 |
-| 索引类型 | ivfflat | ivfflat |
+
+| 参数    | 知识库检索            | 历史消息检索  |
+| ----- | ---------------- | ------- |
+| topK  | 5                | 3       |
+| 相似度阈值 | 0.6              | 0.65    |
+| 距离度量  | 余弦相似度（`<=>` 操作符） | 余弦相似度   |
+| 索引类型  | ivfflat          | ivfflat |
+
 
 ### 接入代码位置
 
 - **检索调用**：`src/services/telegram.js` → `_processSingleMessage()` Step 3a，`Promise.all` 并行执行两路检索，失败静默降级
 - **Prompt 注入**：`src/services/ai.js` → `prepareMessages()`，RAG 结果注入 System Prompt 的知识背景和历史记忆段落
+
+### 知识导入切分流程（v1 已实现）
+
+当前知识库导入已接入基础 chunking，用于提升长文本场景下的检索质量。
+
+```text
+Admin 批量导入文本
+-> ChunkingService.splitText()
+   -> 按空行切分段落
+   -> 合并过短段落
+   -> 对超长段落按 maxChars 切片
+   -> 为相邻片段保留 overlap
+-> ChunkingService.buildKnowledgeItems()
+-> Knowledge.createBatch()
+-> 写入 knowledge_chunks 并生成 embedding
+```
+
+v1 chunking 当前规则：
+
+- 默认 `maxChars = 500`
+- 默认 `minChars = 120`
+- 默认 `overlap = 80`
+- 适合后台导入长段文本、说明文、FAQ、课程内容
+- 仍属于基础版本，暂不包含标题感知、语义分块、结构化元数据
+
+### 当前边界与增强项状态
+
+当前 RAG 已具备“可用”的基础闭环，并已补齐 v1 chunking。剩余增强项如下：
+
+
+| 模块                | 当前状态  | 当前实现方式                              | 什么时候值得加                     |
+| ----------------- | ----- | ----------------------------------- | --------------------------- |
+| 基础 chunking 流水线   | ✅ 已实现（v1） | Admin 批量导入已接入 `ChunkingService`，支持按空行切段、短段合并、长段切片和 overlap | 当需要标题感知、语义分块、元数据保留时继续增强 |
+| Reranker          | ❌ 未实现 | 当前仅依赖 pgvector 相似度排序                | 检索“能召回但前几条顺序不准”时            |
+| Query Rewrite     | ❌ 未实现 | 直接使用用户原始问题生成 query embedding        | 用户问题经常省略上下文、代词很多时           |
+| Hybrid Search     | ❌ 未实现 | 仅语义检索，无 BM25 / 关键词召回                | 知识库里有专有名词、日期、术语、固定短语时       |
+| Citation / 检索依据展示 | ❌ 未实现 | 检索结果仅注入 Prompt，不回传依据                | 需要排查幻觉、审计回答来源、做后台可观测性时      |
+
+
+### 这些增强项是否必须
+
+不是必须一次性全部实现。对当前项目，优先级判断如下：
+
+- **必须先做扎实的基础能力**：消息向量写入、知识入库、双路检索、Prompt 注入、失败降级
+- **已完成的基础增强项**：v1 chunking
+- **最适合尽快补的可观测性能力**：citation 或至少后台可见的检索结果日志
+- **按问题触发再考虑的优化项**：hybrid search、query rewrite、reranker
+
+### 推荐演进顺序
+
+#### V1：基础可用型 RAG + v1 chunking（当前）
+
+- 双检索源：`knowledge_chunks` + `messages`
+- 向量库：PostgreSQL + pgvector
+- 生成方式：System Prompt 注入检索结果
+- 降级策略：embedding 不可用时退化为纯时序上下文
+- 导入流程：后台长文本已自动切分为可检索片段
+
+#### V2：citation / 可观测性
+
+- 在后台或日志中记录本次命中的知识片段和历史消息
+- 需要时把来源信息返回给管理员或最终用户
+- 目标：降低排障成本，提升回答可解释性
+
+#### V3：按需补强检索质量
+
+- `Hybrid Search`：补关键词召回
+- `Query Rewrite`：补口语化、省略式问题理解
+- `Reranker`：提升 topK 排序质量
+
+这个顺序适合当前仓库，因为它能先用最小复杂度提升效果，再逐步处理更细的检索质量问题。
 
 ---
 
@@ -340,75 +438,89 @@ AIService.prepareMessages(context)
 
 ### 技术栈
 
-| 项目 | 规格 |
-|------|------|
-| 数据库 | PostgreSQL 15+ |
-| 向量扩展 | pgvector 0.8.x |
-| 连接方式 | `pg` 模块，连接池（min 5，max 20）|
-| ORM | 无（原生参数化 SQL）|
+
+| 项目   | 规格                        |
+| ---- | ------------------------- |
+| 数据库  | PostgreSQL 15+            |
+| 向量扩展 | pgvector 0.8.x            |
+| 连接方式 | `pg` 模块，连接池（min 5，max 20） |
+| ORM  | 无（原生参数化 SQL）              |
+
 
 ### 数据表
 
 #### `users` — 用户表
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `id` | UUID PK | 内部主键 |
+
+| 字段            | 类型            | 说明             |
+| ------------- | ------------- | -------------- |
+| `id`          | UUID PK       | 内部主键           |
 | `telegram_id` | BIGINT UNIQUE | Telegram 用户 ID |
-| `username` | VARCHAR(100) | 用户名（可为空）|
-| `created_at` | TIMESTAMPTZ | 创建时间 |
-| `updated_at` | TIMESTAMPTZ | 更新时间 |
+| `username`    | VARCHAR(100)  | 用户名（可为空）       |
+| `created_at`  | TIMESTAMPTZ   | 创建时间           |
+| `updated_at`  | TIMESTAMPTZ   | 更新时间           |
+
 
 #### `messages` — 消息表（核心）
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `id` | UUID PK | 主键 |
-| `user_id` | UUID FK → users | 所属用户 |
-| `role` | VARCHAR(20) | `user` / `assistant` / `system` |
-| `content` | TEXT | 消息内容 |
-| `embedding` | VECTOR(768) | 语义向量（可为 NULL）|
-| `metadata` | JSONB | 扩展元数据 |
-| `created_at` | TIMESTAMPTZ | 创建时间 |
+
+| 字段           | 类型              | 说明                              |
+| ------------ | --------------- | ------------------------------- |
+| `id`         | UUID PK         | 主键                              |
+| `user_id`    | UUID FK → users | 所属用户                            |
+| `role`       | VARCHAR(20)     | `user` / `assistant` / `system` |
+| `content`    | TEXT            | 消息内容                            |
+| `embedding`  | VECTOR(768)     | 语义向量（可为 NULL）                   |
+| `metadata`   | JSONB           | 扩展元数据                           |
+| `created_at` | TIMESTAMPTZ     | 创建时间                            |
+
 
 索引：
+
 - `idx_messages_user_created ON messages(user_id, created_at DESC)`
 - `idx_messages_embedding ON messages USING ivfflat (embedding vector_cosine_ops)`
 
 #### `profiles` — 用户画像表
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `id` | UUID PK | 主键 |
-| `user_id` | UUID FK → users | 所属用户 |
-| `goals` | TEXT | 用户目标 |
-| `status` | TEXT | 用户状态 |
-| `preferences` | JSONB | 用户偏好（JSON）|
+
+| 字段            | 类型              | 说明         |
+| ------------- | --------------- | ---------- |
+| `id`          | UUID PK         | 主键         |
+| `user_id`     | UUID FK → users | 所属用户       |
+| `goals`       | TEXT            | 用户目标       |
+| `status`      | TEXT            | 用户状态       |
+| `preferences` | JSONB           | 用户偏好（JSON） |
+
 
 #### `knowledge_chunks` — 知识库表
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `id` | UUID PK | 主键 |
-| `user_id` | UUID FK → users | 所属用户 |
-| `content` | TEXT | 知识内容 |
-| `source` | VARCHAR(255) | 来源说明 |
-| `embedding` | VECTOR(768) | 语义向量 |
-| `created_at` | TIMESTAMPTZ | 创建时间 |
+
+| 字段           | 类型              | 说明   |
+| ------------ | --------------- | ---- |
+| `id`         | UUID PK         | 主键   |
+| `user_id`    | UUID FK → users | 所属用户 |
+| `content`    | TEXT            | 知识内容 |
+| `source`     | VARCHAR(255)    | 来源说明 |
+| `embedding`  | VECTOR(768)     | 语义向量 |
+| `created_at` | TIMESTAMPTZ     | 创建时间 |
+
 
 索引：
+
 - `idx_knowledge_embedding ON knowledge_chunks USING ivfflat (embedding vector_cosine_ops)`
 
 #### `sync_jobs` — 归档任务表
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `id` | UUID PK | 主键 |
-| `job_type` | VARCHAR(50) | 任务类型（如 `notion_sync`）|
-| `date_key` | DATE | 归档日期 |
-| `status` | VARCHAR(20) | `pending` / `processing` / `completed` / `failed` |
-| `details` | JSONB | 任务详情 |
-| `completed_at` | TIMESTAMPTZ | 完成时间 |
+
+| 字段             | 类型          | 说明                                                |
+| -------------- | ----------- | ------------------------------------------------- |
+| `id`           | UUID PK     | 主键                                                |
+| `job_type`     | VARCHAR(50) | 任务类型（如 `notion_sync`）                             |
+| `date_key`     | DATE        | 归档日期                                              |
+| `status`       | VARCHAR(20) | `pending` / `processing` / `completed` / `failed` |
+| `details`      | JSONB       | 任务详情                                              |
+| `completed_at` | TIMESTAMPTZ | 完成时间                                              |
+
 
 ### 数据关系图
 
@@ -427,17 +539,22 @@ sync_jobs              (独立表，记录归档任务状态)
 
 **目录**：`src/admin/`
 
-| 路由 | 功能 |
-|------|------|
-| `GET /` | Dashboard 概览 |
-| `GET /profiles` | 用户画像列表 |
-| `PUT /profiles/:id` | 更新用户画像（字段白名单校验）|
-| `GET /knowledge` | 知识库管理 |
-| `POST /knowledge` | 添加知识条目 |
+
+| 路由                  | 功能              |
+| ------------------- | --------------- |
+| `GET /`             | Dashboard 概览    |
+| `GET /profiles`     | 用户画像列表          |
+| `PUT /profiles/:id` | 更新用户画像（字段白名单校验） |
+| `GET /knowledge`    | 知识库管理           |
+| `POST /knowledge`   | 添加知识条目          |
+| `GET /knowledge/import` | 批量导入知识页面      |
+| `POST /knowledge/import` | 批量导入知识并自动切分为 chunk |
+
 
 **认证**：JWT Bearer Token（`src/admin/middleware/auth.js`）
 
 **安全修复（已完成）**：
+
 - 移除管理员认证绕过漏洞
 - 使用 timing-safe 字符串比较
 - CORS 限制为配置的来源（非通配符）

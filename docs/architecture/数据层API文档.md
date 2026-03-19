@@ -316,6 +316,47 @@ const embedding = await embeddingService.generateEmbedding('这是一个测试�
 
 ---
 
+### 6. ChunkingService (知识切分服务)
+**文件**: `src/services/chunking.js`
+
+#### 方法
+
+##### `chunkingService.splitText(text, options)`
+将长文本切分为适合知识入库和检索的片段。
+
+**参数**:
+- `text` (string, required): 原始长文本
+- `options` (Object, optional): 切分配置
+  - `maxChars` (number, optional, default: 500): 单个片段最大长度
+  - `minChars` (number, optional, default: 120): 合并短段落时的最小长度
+  - `overlap` (number, optional, default: 80): 相邻片段重叠字符数
+
+**返回值**: Array<string> - 切分后的文本片段
+
+##### `chunkingService.buildKnowledgeItems({ userId, source, text, options })`
+将原始文本切分并转换为可直接传给 `Knowledge.createBatch()` 的数据结构。
+
+**参数**:
+- `userId` (string, optional): 用户 UUID
+- `source` (string, optional, default: `admin-import`): 知识来源
+- `text` (string, required): 原始文本
+- `options` (Object, optional): 切分配置
+
+**返回值**: Array<Object> - 知识片段数组
+
+**示例**:
+```javascript
+const items = chunkingService.buildKnowledgeItems({
+    userId: 'user-uuid',
+    source: 'admin-import',
+    text: '第一段内容\n\n第二段内容'
+});
+
+await Knowledge.createBatch(items);
+```
+
+---
+
 ## 数据库连接
 
 ### Database类

@@ -1,7 +1,7 @@
 # Affirm 文档索引
 
 **项目**：Affirm — 显化导师 AI Agent
-**更新日期**：2026-03-05
+**更新日期**：2026-03-19
 
 ---
 
@@ -16,6 +16,9 @@ docs/
 │   ├── system-architecture.md         系统架构（主文档）
 │   └── 数据层API文档.md                数据模型 API 参考
 │
+├── development/                       开发与学习文档
+│   └── rag-learning-path.md           结合当前仓库的 RAG 学习路线
+│
 ├── database/                          数据库文档
 │   └── 数据库设计.md                   表结构、索引、触发器设计
 │
@@ -25,6 +28,7 @@ docs/
 └── reports/                           技术报告
     ├── Affirm 项目技术审计报告.md        安全、运行时、架构全面审计
     ├── 架构升级评估报告.md               升级路线评估（RAG / Webhook / Redis）
+    ├── 项目全量巡检与优先级清单-2026-03-09.md  当前版本巡检结论与修复优先级
     └── repository-refactor.md          仓库结构整理记录
 ```
 
@@ -40,7 +44,7 @@ docs/
 - AI Provider 多提供商结构
 - MessageQueue 串行化机制
 - Vector Memory 向量存储设计
-- RAG 检索增强设计（现状 + 目标架构）
+- RAG 检索增强设计（现状、边界、增强路线）
 - 数据库表结构
 - 部署架构
 
@@ -69,11 +73,26 @@ docs/
 
 包含：
 - 项目定位和核心特性（含状态标注）
+- 当前 RAG 阶段判断（基础可用型 Conversational RAG）
 - 技术栈总览
 - AI Provider 配置说明
 - 核心环境变量
 - 快速开始指南
-- 已知问题与升级路线
+- 已知问题、升级路线与 RAG 增强优先级
+
+---
+
+## 开发文档
+
+### [RAG 从零到一学习路径](development/rag-learning-path.md)
+
+包含：
+
+- RAG 基本概念在当前仓库中的映射
+- 当前对话式 RAG 主链路
+- 推荐阅读代码顺序
+- `chunking / citation / hybrid search / query rewrite / reranker` 的作用与边界
+- 最适合当前项目的学习与增强顺序
 
 ---
 
@@ -116,6 +135,16 @@ docs/
 - 文件移动 / 删除 / 新建清单
 - Import 路径修复记录
 
+### [项目全量巡检与优先级清单（2026-03-09）](reports/项目全量巡检与优先级清单-2026-03-09.md)
+
+**日期**：2026-03-09
+
+涵盖：
+- 全项目脚本、代码、测试、文档与配置巡检
+- 按 P0 / P1 / P2 排序的修复清单
+- 每项问题的证据定位（文件与行号）
+- 建议执行顺序与当前阻塞项
+
 ---
 
 ## 快速导航
@@ -124,6 +153,8 @@ docs/
 |-----------|-------|
 | 系统如何工作 | [系统架构](architecture/system-architecture.md) |
 | RAG 怎么接入 | [系统架构 §6 RAG 设计](architecture/system-architecture.md#6-rag-设计) |
+| 我想系统复习 RAG | [RAG 从零到一学习路径](development/rag-learning-path.md) |
+| RAG 还缺哪些增强项 | [系统架构 §6 RAG 设计](architecture/system-architecture.md#6-rag-设计) |
 | 数据库有哪些表 | [数据库设计](database/数据库设计.md) |
 | 如何调用数据模型 | [数据层 API 文档](architecture/数据层API文档.md) |
 | 项目有哪些安全问题 | [技术审计报告](reports/Affirm%20项目技术审计报告.md) |

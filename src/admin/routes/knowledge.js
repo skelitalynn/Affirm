@@ -4,6 +4,7 @@
 const express = require('express');
 const router = express.Router();
 const Knowledge = require('../../models/knowledge');
+const chunkingService = require('../../services/chunking');
 
 function getFlashFromQuery(query = {}) {
     const flash = {};
@@ -132,25 +133,21 @@ router.post('/import', async (req, res) => {
             return res.redirect('/admin/knowledge/import?error=' + encodeURIComponent('请输入要导入的内容'));
         }
 
-        const lines = items.split('\n').filter(line => line.trim());
-        let successCount = 0;
-        let errorCount = 0;
+        const knowledgeItems = chunkingService.buildKnowledgeItems({
+            userId: user_id ? user_id.trim() : null,
+            source: source ? source.trim() : 'admin-import',
+            text: items
+        });
 
-        for (const line of lines) {
-            try {
-                await Knowledge.create({
-                    user_id: user_id ? user_id.trim() : null,
-                    content: line,
-                    source: source ? source.trim() : 'admin-import'
-                });
-                successCount++;
-            } catch (error) {
-                console.error(`导入失败: ${line}`, error);
-                errorCount++;
-            }
+        if (knowledgeItems.length === 0) {
+            return res.redirect('/admin/knowledge/import?error=' + encodeURIComponent('未生成有效的知识片段，请检查输入内容'));
         }
 
-        res.redirect('/admin/knowledge?success=' + encodeURIComponent(`批量导入完成: ${successCount} 成功, ${errorCount} 失败`));
+        const createdItems = await Knowledge.createBatch(knowledgeItems);
+        const successCount = createdItems.length;
+        const errorCount = knowledgeItems.length - successCount;
+
+        res.redirect('/admin/knowledge?success=' + encodeURIComponent(`批量导入完成: 已切分 ${knowledgeItems.length} 个片段，${successCount} 成功，${errorCount} 失败`));
     } catch (error) {
         console.error('批量导入失败:', error);
         res.redirect('/admin/knowledge/import?error=' + encodeURIComponent('批量导入失败'));

@@ -162,4 +162,35 @@ describe('Admin Routes Integration', () => {
         expect(deleted.rows.length).toBe(0);
         knowledgeId = null;
     });
+
+    it('should chunk long knowledge imports from admin route', async () => {
+        const importSource = 'admin-import-chunking-test';
+        const importContent = [
+            '这是第一段较长的知识内容，用来验证后台导入时会先按空行分段，然后再进行自动切片和合并处理。'.repeat(3),
+            '',
+            '这是第二段内容，同样故意写得比较长，用来确保 chunking 服务会生成多个知识片段，而不是只保存一条大文本。'.repeat(3)
+        ].join('\n');
+
+        const importRes = await request(app)
+            .post('/admin/knowledge/import')
+            .set('Origin', origin)
+            .auth('admin', process.env.ADMIN_PASSWORD)
+            .type('form')
+            .send({
+                user_id: testUserId,
+                source: importSource,
+                items: importContent
+            });
+
+        expect(importRes.status).toBe(302);
+        expect(importRes.headers.location).toContain('/admin/knowledge');
+
+        const imported = await db.query(
+            'SELECT content FROM knowledge_chunks WHERE user_id = $1 AND source = $2 ORDER BY created_at ASC',
+            [testUserId, importSource]
+        );
+
+        expect(imported.rows.length).toBeGreaterThan(1);
+        expect(imported.rows.every((row) => row.content && row.content.length > 0)).toBe(true);
+    });
 });

@@ -14,8 +14,9 @@
     </div>
 
     <div class="form-group">
-        <label for="items">批量内容（每行一条）</label>
-        <textarea id="items" name="items" class="form-control" placeholder="第一条知识&#10;第二条知识" required></textarea>
+        <label for="items">批量内容（支持长文本，系统会自动切分）</label>
+        <small>系统会先按空行分段，再合并过短段落，并对超长内容做带重叠的切片。</small>
+        <textarea id="items" name="items" class="form-control" placeholder="第一段知识&#10;&#10;第二段知识&#10;&#10;也可以继续粘贴更长的正文内容" required></textarea>
     </div>
 
     <div class="action-bar">
