@@ -6,7 +6,7 @@ class AIService {
         this.config = config;
         this.client = null;
         this.model = config.model;
-        this.provider = config.provider;
+        this.providerType = config.providerType || config.provider || 'openai-compatible';
         this.initialized = false;
     }
 
@@ -17,7 +17,7 @@ class AIService {
         const baseURL = this.config.baseURL;
         
         if (!apiKey) {
-            console.warn(`⚠️  ${this.provider} API密钥未配置，AI功能将不可用`);
+            console.warn('⚠️  AI_API_KEY 未配置，AI功能将不可用');
             return false;
         }
 
@@ -29,30 +29,30 @@ class AIService {
             });
 
             // 测试连接
-            console.log(`📊 测试${this.provider}连接...`);
+            console.log(`📊 测试 ${this.providerType} 连接...`);
             const models = await this.client.models.list();
             console.log(`✅ AI服务初始化完成，可用模型: ${models.data.length}个`);
-            console.log(`📊 使用模型: ${this.model}, API端点: ${baseURL}, 提供商: ${this.provider}`);
+            console.log(`📊 使用模型: ${this.model}, API端点: ${baseURL}, Provider Type: ${this.providerType}`);
             
             this.initialized = true;
             return true;
             
         } catch (error) {
-            console.error(`❌ ${this.provider} AI服务初始化失败:`, error.message);
+            console.error(`❌ ${this.providerType} AI服务初始化失败:`, error.message);
             
             // 提供详细的错误诊断
             if (error.code === 'invalid_api_key' || error.status === 401) {
-                console.error(`🔍 API密钥验证失败，请检查${this.provider.toUpperCase()}_API_KEY是否正确`);
+                console.error('🔍 API密钥验证失败，请检查 AI_API_KEY 或兼容别名是否正确');
             } else if (error.code === 'rate_limited' || error.status === 429) {
                 console.error('🔍 API调用频率受限，请稍后重试');
             } else if (error.message.includes('404') || error.message.includes('Not Found')) {
                 console.error(`🔍 API端点可能不存在: ${baseURL}`);
-                console.error(`💡 请检查${this.provider.toUpperCase()}_BASE_URL配置`);
+                console.error('💡 请检查 AI_BASE_URL 或兼容别名配置');
             } else if (error.message.includes('network') || error.message.includes('timeout')) {
                 console.error('🔍 网络连接失败，请检查网络设置');
             }
             
-            console.warn(`⚠️  ${this.provider} AI功能将不可用，但机器人仍可运行`);
+            console.warn(`⚠️  ${this.providerType} AI功能将不可用，但机器人仍可运行`);
             return false;
         }
     }
@@ -76,15 +76,20 @@ class AIService {
                 messages: messages,
                 temperature: this.config.temperature || 0.7,
                 max_tokens: this.config.maxTokens || 1000,
-                top_p: 0.9,
+                top_p: 0.9
+            }, {
                 timeout: 10000
             });
 
-            const response = completion.choices[0].message.content;
+            const response = completion?.choices?.[0]?.message?.content;
+            if (!response || !String(response).trim()) {
+                throw new Error('AI服务返回空响应');
+            }
+
             return response.trim();
             
         } catch (error) {
-            console.error(`❌ ${this.provider} AI生成回复失败:`, error.message);
+            console.error(`❌ ${this.providerType} AI生成回复失败:`, error.message);
             console.error('🔍 AI错误堆栈:', error.stack);
             
             // 如果是API错误，尝试提取响应信息
@@ -108,7 +113,7 @@ class AIService {
             } else if (error.message.includes('insufficient_quota')) {
                 return 'AI服务额度不足，请稍后再试。';
             } else if (error.message.includes('404') || error.message.includes('page not found')) {
-                return `AI服务端点暂时不可用，请检查${this.provider.toUpperCase()}_BASE_URL配置。`;
+                return 'AI服务端点暂时不可用，请检查 AI_BASE_URL 配置。';
             } else if (error.message.includes('model_not_found')) {
                 return `AI模型不可用，请检查AI_MODEL配置 (当前: ${this.model})。`;
             } else {

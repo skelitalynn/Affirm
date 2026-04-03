@@ -6,9 +6,66 @@ describe('KnowledgeVectorStore', () => {
         process.env = { ...originalEnv };
     });
 
-    it('应在远程 embeddings 鉴权失败时自动降级为 deterministic 向量', async () => {
+    it('在未显式配置 EMBEDDING_API_KEY 时不应复用 OPENAI_API_KEY', async () => {
         process.env.OPENAI_API_KEY = 'invalid-openai-key';
         process.env.EMBEDDING_API_KEY = '';
+        process.env.EMBEDDING_DIMENSIONS = '8';
+
+        const addDocuments = jest.fn(async () => {});
+        const poolQuery = jest.fn()
+            .mockResolvedValueOnce({ rows: [] })
+            .mockResolvedValueOnce({ rows: [] })
+            .mockResolvedValueOnce({ rows: [] });
+        const initializeMock = jest.fn(async () => ({
+            addDocuments,
+            similaritySearchWithScore: jest.fn(async () => [])
+        }));
+
+        jest.doMock('../../../src/db/connection', () => ({
+            db: {
+                pool: {
+                    query: poolQuery
+                }
+            }
+        }));
+        jest.doMock('@langchain/community/vectorstores/pgvector', () => ({
+            PGVectorStore: {
+                initialize: initializeMock
+            }
+        }));
+        jest.doMock('@langchain/openai', () => ({
+            OpenAIEmbeddings: class MockOpenAIEmbeddings {
+                constructor(options = {}) {
+                    this.apiKey = options.apiKey;
+                }
+
+                async embedQuery() {
+                    return [0.1, 0.2];
+                }
+            }
+        }));
+
+        const knowledgeVectorStore = require('../../../src/services/rag/knowledge-vector-store');
+
+        const ids = await knowledgeVectorStore.addKnowledgeBatch([{
+            id: '11111111-1111-4111-8111-111111111111',
+            content: 'fallback test content',
+            source: 'unit-test'
+        }]);
+
+        expect(ids).toEqual(['11111111-1111-4111-8111-111111111111']);
+        expect(knowledgeVectorStore.getStatus()).toMatchObject({
+            mode: 'deterministic',
+            provider: 'local',
+            degraded: true
+        });
+        expect(initializeMock).toHaveBeenCalledTimes(1);
+        expect(addDocuments).toHaveBeenCalledTimes(1);
+        expect(poolQuery).toHaveBeenCalledTimes(3);
+    });
+
+    it('应在显式配置的远程 embeddings 鉴权失败时自动降级为 deterministic 向量', async () => {
+        process.env.EMBEDDING_API_KEY = 'invalid-openai-key';
         process.env.EMBEDDING_DIMENSIONS = '8';
 
         const poolQuery = jest.fn()

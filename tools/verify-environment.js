@@ -2,10 +2,21 @@
 require('dotenv').config();
 
 const { runDatabaseDiagnostics } = require('./test-database');
+const { resolveAIConfig } = require('../src/config/ai-config');
 
 async function runVerify() {
-    const requiredVars = ['DB_URL', 'TELEGRAM_BOT_TOKEN', 'AI_PROVIDER'];
-    const missingVars = requiredVars.filter((key) => !process.env[key] || String(process.env[key]).trim() === '');
+    const missingVars = [];
+    const aiConfig = resolveAIConfig(process.env);
+
+    ['DB_URL', 'TELEGRAM_BOT_TOKEN'].forEach((key) => {
+        if (!process.env[key] || String(process.env[key]).trim() === '') {
+            missingVars.push(key);
+        }
+    });
+
+    if (!aiConfig.apiKey) {
+        missingVars.push('AI_API_KEY');
+    }
 
     if (missingVars.length > 0) {
         console.error('❌ 缺少环境变量:', missingVars.join(', '));
