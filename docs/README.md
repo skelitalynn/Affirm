@@ -1,174 +1,60 @@
-# Affirm 文档索引
+# Affirm 文档入口
 
-**项目**：Affirm — 显化导师 AI Agent
-**更新日期**：2026-03-19
+**更新日期**：2026-04-04
 
----
+这套文档只保留两类内容：
+
+1. 当前真实状态
+2. 按流程开发的指南
+
+历史审计、旧开发计划、日报和重复 API 文档已移除，避免继续误导开发路径。
+
+## 第一次接手项目
+
+按这个顺序读：
+
+1. [项目概述](project/项目概述.md)
+2. [开发总流程](development/00-开发总流程.md)
+3. [系统架构](architecture/system-architecture.md)
+4. [数据库设计](database/数据库设计.md)
+
+## 按流程开发
+
+| 目标 | 先看这篇 |
+|------|----------|
+| 启动项目、检查环境 | [01-环境启动与自检](development/01-环境启动与自检.md) |
+| 改 Telegram 对话、Prompt、队列、Webhook | [02-Telegram 对话链路](development/02-Telegram-对话链路.md) |
+| 改知识库导入、检索、LangChain 向量链路 | [03-Knowledge RAG](development/03-Knowledge-RAG.md) |
+| 改管理后台页面、表单、路由 | [04-Admin 后台](development/04-Admin-后台.md) |
+| 改数据库表、索引、触发器、迁移 | [05-数据库与迁移](development/05-数据库与迁移.md) |
+| 跑测试、收尾、准备提交 | [06-测试与交付](development/06-测试与交付.md) |
+
+## 当前最重要的事实
+
+- 业务入口是 `src/index.js`
+- 后台入口是 `src/admin/server.js`
+- `knowledge RAG` 走 `src/services/rag/knowledge-vector-store.js`
+- `messages` 语义记忆当前停用，见 `src/models/message.js`
+- 数据库结构来源于 `scripts/database/schemas/init.sql` 和 `migrations/*.sql`
 
 ## 文档结构
 
-```
+```text
 docs/
-├── README.md                          本文件（文档索引）
-├── DOCUMENTATION_RULES.md             文档治理规则
-│
-├── architecture/                      架构文档
-│   ├── system-architecture.md         系统架构（主文档）
-│   └── 数据层API文档.md                数据模型 API 参考
-│
-├── development/                       开发与学习文档
-│   └── rag-learning-path.md           结合当前仓库的 RAG 学习路线
-│
-├── database/                          数据库文档
-│   └── 数据库设计.md                   表结构、索引、触发器设计
-│
-├── project/                           项目说明
-│   └── 项目概述.md                     项目定位、技术栈、快速开始
-│
-└── reports/                           技术报告
-    ├── 全项目代码巡检与修复报告-2026-03-19.md 最新全量巡检与修复结果
-    ├── Affirm 项目技术审计报告.md        安全、运行时、架构全面审计
-    ├── 架构升级评估报告.md               升级路线评估（RAG / Webhook / Redis）
-    ├── 项目全量巡检与优先级清单-2026-03-09.md  当前版本巡检结论与修复优先级
-    └── repository-refactor.md          仓库结构整理记录
+├── README.md
+├── architecture/
+│   ├── system-architecture.md
+│   └── knowledge-rag-architecture.md
+├── database/
+│   └── 数据库设计.md
+├── development/
+│   ├── 00-开发总流程.md
+│   ├── 01-环境启动与自检.md
+│   ├── 02-Telegram-对话链路.md
+│   ├── 03-Knowledge-RAG.md
+│   ├── 04-Admin-后台.md
+│   ├── 05-数据库与迁移.md
+│   └── 06-测试与交付.md
+└── project/
+    └── 项目概述.md
 ```
-
----
-
-## 架构文档
-
-### [系统架构](architecture/system-architecture.md)
-
-当前项目完整架构说明，包含：
-- 系统整体架构图
-- Telegram Bot 消息处理流程
-- AI Provider 多提供商结构
-- MessageQueue 串行化机制
-- Vector Memory 向量存储设计
-- RAG 检索增强设计（现状、边界、增强路线）
-- 数据库表结构
-- 部署架构
-
-### [数据层 API 文档](architecture/数据层API文档.md)
-
-数据模型方法参考：`User`、`Message`、`Profile`、`Knowledge` 各模型的方法签名和示例。
-
----
-
-## 数据库文档
-
-### [数据库设计](database/数据库设计.md)
-
-包含：
-- 5 张数据表的完整 SQL 定义（`users`、`profiles`、`messages`、`knowledge_chunks`、`sync_jobs`）
-- 索引设计（功能索引 + ivfflat 向量索引）
-- 触发器设计（`updated_at` 自动更新）
-- 数据关系图
-- 性能优化和安全设计说明
-
----
-
-## 项目文档
-
-### [项目概述](project/项目概述.md)
-
-包含：
-- 项目定位和核心特性（含状态标注）
-- 当前 RAG 阶段判断（基础可用型 Conversational RAG）
-- 技术栈总览
-- AI Provider 配置说明
-- 核心环境变量
-- 快速开始指南
-- 已知问题、升级路线与 RAG 增强优先级
-
----
-
-## 开发文档
-
-### [RAG 从零到一学习路径](development/rag-learning-path.md)
-
-包含：
-
-- RAG 基本概念在当前仓库中的映射
-- 当前对话式 RAG 主链路
-- 推荐阅读代码顺序
-- `chunking / citation / hybrid search / query rewrite / reranker` 的作用与边界
-- 最适合当前项目的学习与增强顺序
-
----
-
-## 技术报告
-
-### [全项目代码巡检与修复报告（2026-03-19）](reports/全项目代码巡检与修复报告-2026-03-19.md)
-
-**日期**：2026-03-19
-
-涵盖：
-- 全仓代码、测试、脚本、部署与文档一致性复核
-- 已修复问题（含 RAG 检索链路、批量导入可观测性、脚本断链）
-- 验证结果与残余风险
-- `baseline-browser-mapping` 依赖问题复现结论
-
-### [Affirm 项目技术审计报告](reports/Affirm%20项目技术审计报告.md)
-
-**日期**：2026-03-05
-**审计范围**：全项目源码 + 配置 + 数据库 Schema
-
-涵盖：
-- 安全漏洞（高危 / 中危 / 低危）及修复状态
-- 运行时 Bug 分析
-- AI 模型架构评估
-- 测试覆盖率
-- 基础设施与部署
-- 优化路线图
-
-### [架构升级评估报告](reports/架构升级评估报告.md)
-
-**日期**：2026-03-05
-
-涵盖：
-- 现有架构各模块分析（复用 / 改造 / 重写判断）
-- 5 个升级项的详细评估：
-  - Embedding Provider 独立（Low，立即执行）
-  - RAG Integration（Low，立即执行）
-  - Webhook 架构（Medium）
-  - Redis Queue / BullMQ（Medium）
-  - LangGraph Agent（High，按需评估）
-- 推荐升级顺序和实施计划
-
-### [仓库整理报告](reports/repository-refactor.md)
-
-**日期**：2026-03-05
-
-涵盖：
-- 整理前问题分析
-- 新目录结构
-- 文件移动 / 删除 / 新建清单
-- Import 路径修复记录
-
-### [项目全量巡检与优先级清单（2026-03-09）](reports/项目全量巡检与优先级清单-2026-03-09.md)
-
-**日期**：2026-03-09
-
-涵盖：
-- 全项目脚本、代码、测试、文档与配置巡检
-- 按 P0 / P1 / P2 排序的修复清单
-- 每项问题的证据定位（文件与行号）
-- 建议执行顺序与当前阻塞项
-
----
-
-## 快速导航
-
-| 我想了解… | 去这里 |
-|-----------|-------|
-| 当前项目真实状态 | [全项目代码巡检与修复报告（2026-03-19）](reports/全项目代码巡检与修复报告-2026-03-19.md) |
-| 系统如何工作 | [系统架构](architecture/system-architecture.md) |
-| RAG 怎么接入 | [系统架构 §6 RAG 设计](architecture/system-architecture.md#6-rag-设计) |
-| 我想系统复习 RAG | [RAG 从零到一学习路径](development/rag-learning-path.md) |
-| RAG 还缺哪些增强项 | [系统架构 §6 RAG 设计](architecture/system-architecture.md#6-rag-设计) |
-| 数据库有哪些表 | [数据库设计](database/数据库设计.md) |
-| 如何调用数据模型 | [数据层 API 文档](architecture/数据层API文档.md) |
-| 项目有哪些安全问题 | [技术审计报告](reports/Affirm%20项目技术审计报告.md) |
-| 下一步该升级什么 | [架构升级评估报告](reports/架构升级评估报告.md) |
-| 项目快速上手 | [项目概述](project/项目概述.md) |

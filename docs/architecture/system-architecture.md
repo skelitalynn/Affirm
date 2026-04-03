@@ -1,653 +1,126 @@
-# Affirm 系统架构文档
+# 系统架构
 
-**版本**：v3.0
-**更新日期**：2026-03-19
-**状态**：当前生产架构（BullMQ + Webhook 已就绪）
+**更新日期**：2026-04-04
 
----
+本文档只描述当前还有效的系统结构，不再保留历史升级快照。
 
-## 目录
+## 1. 运行入口
 
-1. [系统整体架构](#1-系统整体架构)
-2. [Telegram Bot 架构](#2-telegram-bot-架构)
-3. [AI Provider 结构](#3-ai-provider-结构)
-4. [MessageQueue 机制](#4-messagequeue-机制)
-5. [Vector Memory 设计](#5-vector-memory-设计)
-6. [RAG 设计](#6-rag-设计)
-7. [数据库结构](#7-数据库结构)
-8. [Admin 管理后台](#8-admin-管理后台)
-9. [部署架构](#9-部署架构)
-10. [目录结构](#10-目录结构)
+| 入口 | 文件 | 用途 |
+|------|------|------|
+| Telegram 主服务 | `src/index.js` | 启动 Bot、AI、队列、Webhook/Polling |
+| Admin 后台 | `src/admin/server.js` | 提供画像和知识管理页面 |
+| 数据库迁移 | `scripts/database/migrate.js` | 初始化 schema 并执行 `migrations/*.sql` |
 
----
-
-## 1. 系统整体架构
-
-Affirm 是一个基于 Telegram Bot 的 AI 显化导师助手。用户通过 Telegram 对话，后端对接多个 AI Provider，所有消息持久化到 PostgreSQL（含 pgvector 语义向量），对话支持归档到 Notion。
-
-### Polling 模式（开发 / 默认，`WEBHOOK_ENABLED=false`）
-
-```
-┌──────────────────────────────────────────────────────┐
-│                   用户（Telegram）                    │
-└─────────────────────────┬────────────────────────────┘
-                          │ 文本消息 / 命令
-                          ▼
-┌──────────────────────────────────────────────────────┐
-│              Telegram Bot API（Polling 模式）          │
-│              node-telegram-bot-api                    │
-└─────────────────────────┬────────────────────────────┘
-                          │
-                          ▼
-┌──────────────────────────────────────────────────────┐
-│                  TelegramService                      │
-│  ┌──────────────────────┐  ┌──────────────────────┐  │
-│  │    MessageQueue      │  │   Command Handlers   │  │
-│  │ BullMQ（Redis 可用）  │  │ /start /help ...    │  │
-│  │ 或 内存队列（降级）   │  └──────────────────────┘  │
-│  └──────────┬───────────┘                             │
-└─────────────┼──────────────────────────────────────────┘
-              │
-    ┌─────────┴─────────────────────┐
-    │                               │
-    ▼                               ▼
-┌──────────┐                ┌───────────────┐
-│AIService │                │ NotionService │
-│（多 Provider）│            │（对话归档）    │
-└────┬─────┘                └───────────────┘
-     │
-     ▼
-┌──────────────────────────┐
-│   AI Provider（可配置）   │
-│  - DeepSeek（默认）       │
-│  - Claude                │
-│  - OpenAI                │
-└──────────────────────────┘
-
-┌────────────────────────────────┐    ┌──────────────────────┐
-│    PostgreSQL + pgvector       │    │       Redis          │
-│  - users                       │    │  BullMQ 持久化队列   │
-│  - messages（含 embedding）     │    │  affirm:messages     │
-│  - profiles                    │    └──────────────────────┘
-│  - knowledge_chunks            │
-│  - sync_jobs                   │
-└────────────────────────────────┘
-```
-
-### Webhook 模式（生产，`WEBHOOK_ENABLED=true`）
-
-```
-┌────────────────────────────────────────────────────────────┐
-│                      用户（Telegram）                       │
-└───────────────────────────────┬────────────────────────────┘
-                                │ 文本消息 / 命令
-                                ▼
-                    Telegram Bot API
-                                │ HTTP POST /webhook（push）
-                                ▼
-                    ┌─────────────────────┐
-                    │  Nginx（SSL 终止）   │
-                    │  HTTPS → HTTP       │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │ Express Webhook 服务 │  ← Node.js 内 port 3002
-                    │  POST /webhook       │
-                    │  Token 鉴权          │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │  BullMQ Queue       │
-                    │ add('processMessage', {}) │
-                    └──────────┬──────────┘
-                               │ job
-                               ▼
-                    ┌─────────────────────┐
-                    │       Redis         │  ← 持久化存储
-                    └──────────┬──────────┘
-                               │ consume
-                               ▼
-                    ┌─────────────────────┐
-                    │  BullMQ Worker      │  concurrency: 1
-                    │  _processSingleMsg  │
-                    └──────────┬──────────┘
-              ┌────────────────┼─────────────────┐
-              ▼                ▼                 ▼
-        AIService      EmbeddingService    PostgreSQL
-       （LLM 调用）    （RAG 语义检索）      pgvector
-              │
-              ▼
-    Telegram Bot API（sendMessage）
-```
-
----
-
-## 2. Telegram Bot 架构
-
-### 消息处理流程
-
-```
-Telegram Message
-      │
-      ▼
-TelegramService.handleMessage()
-      │
-      ├─► sendChatAction('typing')     // 立即反馈，不等队列
-      │
-      ▼
-MessageQueue.enqueue(userId, fn)       // 按用户串行化
-      │
-      ▼（同一用户的消息保证顺序执行）
-_processSingleMessage()
-      │
-      ├─► ensureUser()                 // 创建或查找用户记录
-      ├─► Message.create(user_msg)     // 保存消息，自动生成 embedding
-      ├─► Message.getRecentMessages()  // 获取最近 N 条时序上下文
-      │
-      ├─► [RAG] EmbeddingService       // 语义检索
-      │         ├─► Knowledge.semanticSearch()      // 相关知识片段
-      │         └─► Message.semanticSearchByText()  // 相关历史消息
-      │
-      ├─► AIService.generateResponse() // 调用 LLM（含 RAG 上下文）
-      ├─► Message.create(ai_reply)     // 保存 AI 回复
-      └─► bot.sendMessage()            // 返回结果给用户
-```
-
-### Bot 命令
-
-
-| 命令             | 功能                 |
-| -------------- | ------------------ |
-| `/start`       | 欢迎用户，注册用户记录        |
-| `/help`        | 显示帮助和命令列表          |
-| `/history`     | 查看最近对话（条数可配置）      |
-| `/clear`       | 清除全部对话历史           |
-| `/archive_now` | 手动触发当日对话归档到 Notion |
-
-
----
-
-## 3. AI Provider 结构
-
-### 多 Provider 配置
-
-通过环境变量 `AI_PROVIDER` 选择当前提供商，所有 Provider 统一使用 `openai` npm 包（OpenAI 兼容 API），无需为每个 Provider 编写独立客户端。
-
-
-| Provider       | 环境变量               | 默认 Base URL                   | 默认模型                |
-| -------------- | ------------------ | ----------------------------- | ------------------- |
-| `deepseek`（默认） | `DEEPSEEK_API_KEY` | `https://api.deepseek.com/v1` | `deepseek-reasoner` |
-| `claude`       | `CLAUDE_API_KEY`   | `https://api.aigocode.com/v1` | `claude-sonnet-4-6` |
-| `openai`       | `OPENAI_API_KEY`   | `https://api.openai.com/v1`   | `gpt-4`             |
-
-
-### AIService 结构（`src/services/ai.js`）
-
-```
-AIService
-  ├── initialize()        // 初始化 OpenAI 兼容客户端，测试连接
-  ├── generateResponse()  // 生成回复（接收含 RAG 结果的 context）
-  ├── prepareMessages()   // 组装 system prompt + RAG 上下文 + 历史 + 用户消息
-  └── testConnection()    // 连接健康检查
-```
-
-### System Prompt 结构
-
-```
-[system]
-  你是一个有帮助的显化导师，帮助用户通过积极肯定语和思维重塑来达成目标。
-  用户信息：{ username, id }
-  [RAG 注入] 相关知识背景（若有匹配片段）
-  [RAG 注入] 相关历史记忆（若有语义相关消息）
-
-[messages]
-  最近 N 条对话（时序上下文）
-
-[user]
-  当前用户消息
-```
-
----
-
-## 4. MessageQueue 机制
-
-**文件**：`src/utils/message-queue.js`
-
-### 设计目标
-
-防止同一用户的并发消息竞争 AI 上下文，保证同一用户的消息严格串行处理，同时不阻塞其他用户。
-
-### 结构（当前实现）
+## 2. 系统总览
 
 ```text
-MessageQueue（统一门面）
-  │
-  ├── BullMQQueue（默认）
-  │     ├── Queue + Worker（concurrency: 1）
-  │     ├── Redis 持久化
-  │     └── job: processMessage
-  │
-  └── InMemoryQueue（降级）
-        ├── userQueues: Map<userId, queue[]>
-        ├── 单用户串行处理
-        ├── 超时控制：30 秒（defaultTimeout）
-        └── 空队列自动清理
+Telegram
+  -> src/index.js
+  -> TelegramService
+     -> MessageQueue
+     -> AIService
+     -> Knowledge.semanticSearch()
+     -> Message.create()
+     -> NotionService
+
+Admin Browser
+  -> src/admin/server.js
+  -> /admin/profiles
+  -> /admin/knowledge
+     -> Knowledge.create / createBatch / update / delete
+
+Database
+  -> users
+  -> profiles
+  -> messages
+  -> knowledge_chunks
+  -> sync_jobs
+  -> schema_migrations
 ```
 
-### 降级与边界
+## 3. Telegram 主链路
 
-| 场景 | 当前行为 |
-|------|----------|
-| Redis 可用 | 使用 BullMQ 持久化队列 |
-| Redis 不可用 / BullMQ 初始化失败 | 自动降级为内存队列，不阻断主流程 |
-| 进程重启（内存降级模式） | 内存队列任务会丢失（⚠️ 降级模式固有限制） |
-| 多实例扩容 | 推荐 BullMQ + Webhook；内存降级模式仅适合单实例兜底 |
+核心文件：
 
+- `src/index.js`
+- `src/services/telegram.js`
+- `src/services/ai.js`
+- `src/models/message.js`
+- `src/models/knowledge.js`
 
----
+处理流程：
 
-## 5. Vector Memory 设计
+1. `src/index.js` 创建 `TelegramService`
+2. `TelegramService.start()` 根据 `WEBHOOK_ENABLED` 选择 Polling 或 Webhook
+3. 用户消息进入 `handleMessage()`，再进入 `_processSingleMessage()`
+4. `Message.create()` 保存用户消息
+5. `Message.getRecentMessages()` 取短期上下文
+6. `Knowledge.semanticSearch()` 查知识库
+7. `Message.semanticSearchByText()` 当前固定返回空数组
+8. `AIService.generateResponse()` 生成回复
+9. `Message.create()` 保存 assistant 回复
+10. Bot 回发消息
 
-**文件**：`src/services/embedding.js`、`src/models/message.js`
+## 4. Knowledge RAG
 
-### Embedding 生成
+核心文件：
 
-Embedding 使用独立 Provider 配置（`config.embedding`），与主 AI Provider 完全解耦。
+- `src/services/rag/knowledge-vector-store.js`
+- `src/models/knowledge.js`
+- `src/services/chunking.js`
+- `src/admin/routes/knowledge.js`
 
+关键事实：
 
-| 参数          | 配置                                                                                      |
-| ----------- | --------------------------------------------------------------------------------------- |
-| 配置来源        | `config.embedding`（独立于 `config.ai`）                                                     |
-| 向量维度        | 768（与数据库 `VECTOR(768)` 列一致，由 `EMBEDDING_DIMENSIONS` 控制）                                 |
-| 默认模型        | `text-embedding-3-small`（OpenAI，支持原生 768 维输出）                                           |
-| 默认 Base URL | `https://api.openai.com/v1`                                                             |
-| 环境变量        | `EMBEDDING_API_KEY` / `EMBEDDING_MODEL` / `EMBEDDING_BASE_URL` / `EMBEDDING_DIMENSIONS` |
+- `knowledge_chunks` 是当前唯一仍在使用的向量检索表
+- 写入和检索都通过 `LangChain PGVectorStore`
+- 写入时使用 `metadata` 同步 `source` 和 `user_id`
+- 没有远程 embedding key 时，退回 deterministic 向量
 
+详细见：[knowledge-rag-architecture.md](knowledge-rag-architecture.md)
 
-### 消息向量写入流程
+## 5. Admin 后台
 
-```
-Message.create({ content })
-  │
-  ├── EmbeddingService.generateEmbedding(content)
-  │     └── 返回 Float32Array / number[]
-  │
-  ├── toSql(embedding)    // pgvector 格式转换（pgvector npm 包）
-  │
-  └── INSERT INTO messages
-        (user_id, role, content, embedding, metadata)
-```
+核心文件：
 
-### 失败降级
+- `src/admin/server.js`
+- `src/admin/routes/profiles.js`
+- `src/admin/routes/knowledge.js`
 
-embedding 生成失败时，`embedding` 写入 `NULL`。消息仍正常存储，语义检索功能对该条消息不可用，时序上下文功能不受影响。
+设计边界：
 
----
+- 使用 HTTP Basic Auth
+- 所有写操作都经过 Origin/Referer 检查
+- 后台只负责管理，不直接承担 Telegram 主流程
 
-## 6. RAG 设计
+## 6. 当前模块边界
 
-### 当前状态（Phase 1 已完成）
+### 仍然是主干能力
 
+- `TelegramService`
+- `AIService`
+- `Knowledge`
+- `Profile`
+- `NotionService`
+- `MessageQueue`
 
-| 组件                               | 实现状态  | 接入状态             |
-| -------------------------------- | ----- | ---------------- |
-| `Knowledge.semanticSearch()`     | ✅ 已实现 | ✅ 已接入对话链路        |
-| `Message.semanticSearchByText()` | ✅ 已实现 | ✅ 已接入对话链路        |
-| EmbeddingService                 | ✅ 已实现 | ✅ 独立 Provider 配置 |
-| ChunkingService                  | ✅ 已实现 | ✅ Admin 批量导入接入 |
+### 当前处于停用或降级状态
 
+- `messages` 语义记忆：停用
+- knowledge embeddings：可能处于 deterministic fallback
 
-### RAG 定位
-
-当前架构不是“纯文档问答型 RAG”，而是“对话式 RAG + 语义记忆”：
-
-- `knowledge_chunks`：用户录入的外部知识，作为知识库检索源
-- `messages`：历史对话消息，作为长期语义记忆检索源
-- `recentMessages`：最近 N 条消息，作为短期时序上下文
-
-也就是说，Affirm 当前的回答链路同时依赖三类上下文：
-
-1. 最近对话历史（短期记忆）
-2. 知识库语义检索结果（外部知识）
-3. 历史消息语义检索结果（长期记忆）
-
-### RAG 架构
-
-```
-用户消息
-  │
-  ▼（Step 3a，并行）
-Knowledge.semanticSearch(userMessage, userId, topK=5, threshold=0.6)
-  └── 内部生成 query embedding 并检索 knowledge_chunks
-      (embedding 不可用时返回空数组)
-
-Message.semanticSearchByText(userMessage, userId, topK=3, threshold=0.65)
-  └── 内部生成 query embedding 并检索 messages
-      (embedding 不可用时返回空数组)
-
-  ▼（Step 4）
-构建 AI Context：
-  {
-    recentMessages:    最近 N 条时序消息（短期记忆）
-    relevantKnowledge: RAG 知识片段（用户注入的外部知识）
-    semanticMessages:  RAG 历史消息（长期语义记忆）
-  }
-
-  ▼（Step 5）
-AIService.prepareMessages(context)
-  └── System Prompt 中注入 RAG 结果
-```
-
-### RAG 检索参数
-
-
-| 参数    | 知识库检索            | 历史消息检索  |
-| ----- | ---------------- | ------- |
-| topK  | 5                | 3       |
-| 相似度阈值 | 0.6              | 0.65    |
-| 距离度量  | 余弦相似度（`<=>` 操作符） | 余弦相似度   |
-| 索引类型  | ivfflat          | ivfflat |
-
-
-### 接入代码位置
-
-- **检索调用**：`src/services/telegram.js` → `_processSingleMessage()` Step 3a，`Promise.all` 并行执行两路检索，失败静默降级
-- **Prompt 注入**：`src/services/ai.js` → `prepareMessages()`，RAG 结果注入 System Prompt 的知识背景和历史记忆段落
-
-### 知识导入切分流程（v1 已实现）
-
-当前知识库导入已接入基础 chunking，用于提升长文本场景下的检索质量。
+## 7. 目录责任
 
 ```text
-Admin 批量导入文本
--> ChunkingService.splitText()
-   -> 按空行切分段落
-   -> 合并过短段落
-   -> 对超长段落按 maxChars 切片
-   -> 为相邻片段保留 overlap
--> ChunkingService.buildKnowledgeItems()
--> Knowledge.createBatch()
--> 写入 knowledge_chunks 并生成 embedding
+src/
+├── admin/      后台路由、页面、认证
+├── config/     配置管理
+├── db/         数据库连接
+├── models/     数据读写契约
+├── services/   业务服务
+├── services/rag/
+└── utils/      队列、错误处理
 ```
 
-v1 chunking 当前规则：
-
-- 默认 `maxChars = 500`
-- 默认 `minChars = 120`
-- 默认 `overlap = 80`
-- 适合后台导入长段文本、说明文、FAQ、课程内容
-- 仍属于基础版本，暂不包含标题感知、语义分块、结构化元数据
-
-### 当前边界与增强项状态
-
-当前 RAG 已具备“可用”的基础闭环，并已补齐 v1 chunking。剩余增强项如下：
-
-
-| 模块                | 当前状态  | 当前实现方式                              | 什么时候值得加                     |
-| ----------------- | ----- | ----------------------------------- | --------------------------- |
-| 基础 chunking 流水线   | ✅ 已实现（v1） | Admin 批量导入已接入 `ChunkingService`，支持按空行切段、短段合并、长段切片和 overlap | 当需要标题感知、语义分块、元数据保留时继续增强 |
-| Reranker          | ❌ 未实现 | 当前仅依赖 pgvector 相似度排序                | 检索“能召回但前几条顺序不准”时            |
-| Query Rewrite     | ❌ 未实现 | 直接使用用户原始问题生成 query embedding        | 用户问题经常省略上下文、代词很多时           |
-| Hybrid Search     | ❌ 未实现 | 仅语义检索，无 BM25 / 关键词召回                | 知识库里有专有名词、日期、术语、固定短语时       |
-| Citation / 检索依据展示 | ❌ 未实现 | 检索结果仅注入 Prompt，不回传依据                | 需要排查幻觉、审计回答来源、做后台可观测性时      |
-
-
-### 这些增强项是否必须
-
-不是必须一次性全部实现。对当前项目，优先级判断如下：
-
-- **必须先做扎实的基础能力**：消息向量写入、知识入库、双路检索、Prompt 注入、失败降级
-- **已完成的基础增强项**：v1 chunking
-- **最适合尽快补的可观测性能力**：citation 或至少后台可见的检索结果日志
-- **按问题触发再考虑的优化项**：hybrid search、query rewrite、reranker
-
-### 推荐演进顺序
-
-#### V1：基础可用型 RAG + v1 chunking（当前）
-
-- 双检索源：`knowledge_chunks` + `messages`
-- 向量库：PostgreSQL + pgvector
-- 生成方式：System Prompt 注入检索结果
-- 降级策略：embedding 不可用时退化为纯时序上下文
-- 导入流程：后台长文本已自动切分为可检索片段
-
-#### V2：citation / 可观测性
-
-- 在后台或日志中记录本次命中的知识片段和历史消息
-- 需要时把来源信息返回给管理员或最终用户
-- 目标：降低排障成本，提升回答可解释性
-
-#### V3：按需补强检索质量
-
-- `Hybrid Search`：补关键词召回
-- `Query Rewrite`：补口语化、省略式问题理解
-- `Reranker`：提升 topK 排序质量
-
-这个顺序适合当前仓库，因为它能先用最小复杂度提升效果，再逐步处理更细的检索质量问题。
-
----
-
-## 7. 数据库结构
-
-### 技术栈
-
-
-| 项目   | 规格                        |
-| ---- | ------------------------- |
-| 数据库  | PostgreSQL 15+            |
-| 向量扩展 | pgvector 0.8.x            |
-| 连接方式 | `pg` 模块，连接池（min 5，max 20） |
-| ORM  | 无（原生参数化 SQL）              |
-
-
-### 数据表
-
-#### `users` — 用户表
-
-
-| 字段            | 类型            | 说明             |
-| ------------- | ------------- | -------------- |
-| `id`          | UUID PK       | 内部主键           |
-| `telegram_id` | BIGINT UNIQUE | Telegram 用户 ID |
-| `username`    | VARCHAR(100)  | 用户名（可为空）       |
-| `created_at`  | TIMESTAMPTZ   | 创建时间           |
-| `updated_at`  | TIMESTAMPTZ   | 更新时间           |
-
-
-#### `messages` — 消息表（核心）
-
-
-| 字段           | 类型              | 说明                              |
-| ------------ | --------------- | ------------------------------- |
-| `id`         | UUID PK         | 主键                              |
-| `user_id`    | UUID FK → users | 所属用户                            |
-| `role`       | VARCHAR(20)     | `user` / `assistant` / `system` |
-| `content`    | TEXT            | 消息内容                            |
-| `embedding`  | VECTOR(768)     | 语义向量（可为 NULL）                   |
-| `metadata`   | JSONB           | 扩展元数据                           |
-| `created_at` | TIMESTAMPTZ     | 创建时间                            |
-
-
-索引：
-
-- `idx_messages_user_created ON messages(user_id, created_at DESC)`
-- `idx_messages_embedding ON messages USING ivfflat (embedding vector_cosine_ops)`
-
-#### `profiles` — 用户画像表
-
-
-| 字段            | 类型              | 说明         |
-| ------------- | --------------- | ---------- |
-| `id`          | UUID PK         | 主键         |
-| `user_id`     | UUID FK → users | 所属用户       |
-| `goals`       | TEXT            | 用户目标       |
-| `status`      | TEXT            | 用户状态       |
-| `preferences` | JSONB           | 用户偏好（JSON） |
-
-
-#### `knowledge_chunks` — 知识库表
-
-
-| 字段           | 类型              | 说明   |
-| ------------ | --------------- | ---- |
-| `id`         | UUID PK         | 主键   |
-| `user_id`    | UUID FK → users | 所属用户 |
-| `content`    | TEXT            | 知识内容 |
-| `source`     | VARCHAR(255)    | 来源说明 |
-| `embedding`  | VECTOR(768)     | 语义向量 |
-| `created_at` | TIMESTAMPTZ     | 创建时间 |
-
-
-索引：
-
-- `idx_knowledge_embedding ON knowledge_chunks USING ivfflat (embedding vector_cosine_ops)`
-
-#### `sync_jobs` — 归档任务表
-
-
-| 字段             | 类型          | 说明                                                |
-| -------------- | ----------- | ------------------------------------------------- |
-| `id`           | UUID PK     | 主键                                                |
-| `job_type`     | VARCHAR(50) | 任务类型（如 `notion_sync`）                             |
-| `date_key`     | DATE        | 归档日期                                              |
-| `status`       | VARCHAR(20) | `pending` / `processing` / `completed` / `failed` |
-| `details`      | JSONB       | 任务详情                                              |
-| `completed_at` | TIMESTAMPTZ | 完成时间                                              |
-
-
-### 数据关系图
-
-```
-users
-  ├── profiles         (1:1，CASCADE DELETE)
-  ├── messages         (1:N，CASCADE DELETE，含 embedding 向量)
-  └── knowledge_chunks (1:N，CASCADE DELETE，含 embedding 向量)
-
-sync_jobs              (独立表，记录归档任务状态)
-```
-
----
-
-## 8. Admin 管理后台
-
-**目录**：`src/admin/`
-
-
-| 路由（完整前缀） | 功能 |
-|---|---|
-| `GET /admin` | Dashboard 概览 |
-| `GET /admin/profiles` | 用户画像列表 |
-| `POST /admin/profiles` | 创建画像 |
-| `POST /admin/profiles/:id/update` | 更新画像（字段白名单校验） |
-| `POST /admin/profiles/:id/delete` | 删除画像 |
-| `GET /admin/knowledge` | 知识库管理 |
-| `POST /admin/knowledge` | 添加知识条目 |
-| `GET /admin/knowledge/import` | 批量导入页面 |
-| `POST /admin/knowledge/import` | 批量导入并自动切分 chunk |
-
-
-**认证**：HTTP Basic Auth（用户名固定 `admin` + `ADMIN_PASSWORD`）
-
-**安全修复（已完成）**：
-
-- 移除管理员认证绕过漏洞
-- 使用 timing-safe 字符串比较
-- CORS 限制为配置的来源（非通配符）
-- 字段白名单防止批量赋值（`User.update`、`Profile.update`）
-
----
-
-## 9. 部署架构
-
-### 当前架构（生产）
-
-```
-Docker Compose
-  ├── app          Node.js 20（src/index.js）
-  │                Telegram Bot + Webhook（3002）
-  │                AI_PROVIDER=deepseek/claude/openai
-  │
-  ├── redis        BullMQ 队列持久化
-  │
-  └── postgres     pgvector/pgvector:pg15
-                   数据持久化到 Docker Volume
-                   密码通过环境变量注入（非硬编码）
-```
-
-### 进程管理
-
-PM2 配置：`monitoring/ecosystem.config.js`
-日志轮转：`monitoring/logrotate.conf`
-
-### Webhook / 队列状态
-
-- Webhook 模式：✅ 已实现（`WEBHOOK_ENABLED=true`）
-- BullMQ + Redis：✅ 已实现
-- Redis 不可用降级：✅ 已实现（内存队列兜底）
-- Nginx SSL 反向代理配置：✅ 已提供（`docker/nginx/nginx.conf`）
-
----
-
-## 10. 目录结构
-
-```
-Affirm/
-├── src/                        核心源代码
-│   ├── index.js                程序入口
-│   ├── config.js               多 Provider 全局配置
-│   ├── health.js               健康检查端点
-│   ├── config/
-│   │   └── manager.js          运行时配置管理（热更新）
-│   ├── db/
-│   │   └── connection.js       PostgreSQL 连接池
-│   ├── models/                 数据模型（原生 SQL）
-│   │   ├── user.js
-│   │   ├── message.js          含 embedding 自动生成 + 语义检索
-│   │   ├── profile.js
-│   │   └── knowledge.js        含 semanticSearch()
-│   ├── services/               业务服务层
-│   │   ├── telegram.js         Bot 主逻辑 + 命令处理
-│   │   ├── ai.js               多 Provider AI 客户端
-│   │   ├── notion.js           Notion 归档服务
-│   │   └── embedding.js        向量嵌入生成
-│   ├── utils/
-│   │   ├── message-queue.js    用户级串行消息队列
-│   │   └── error-handler.js    统一错误处理 + 自定义错误类
-│   ├── admin/                  Web 管理面板（Express + EJS）
-│   │   ├── server.js
-│   │   ├── middleware/auth.js
-│   │   ├── routes/
-│   │   └── views/
-│   └── notion/
-│       └── config-ui.js        Notion 配置界面
-│
-├── docs/                       所有文档
-│   ├── README.md               文档索引
-│   ├── DOCUMENTATION_RULES.md  文档治理规则
-│   ├── architecture/           架构文档
-│   │   ├── system-architecture.md   本文档
-│   │   └── 数据层API文档.md
-│   ├── database/               数据库文档
-│   │   └── 数据库设计.md
-│   ├── project/                项目说明
-│   │   └── 项目概述.md
-│   └── reports/                技术报告
-│       ├── Affirm 项目技术审计报告.md
-│       ├── 架构升级评估报告.md
-│       └── repository-refactor.md
-│
-├── scripts/                    自动化脚本
-├── tests/                      测试代码
-├── tools/                      调试诊断工具
-├── docker/                     Docker 附属配置
-├── monitoring/                 PM2 + 日志配置
-├── migrations/                 数据库迁移（预留）
-├── skills/                     OpenClaw Skill 模块
-│
-├── Dockerfile
-├── docker-compose.yml
-├── CLAUDE.md                   仓库操作规范
-└── README.md
-```
+如果你准备修改某个功能，先去对应流程文档，不要直接从旧报告开始读。

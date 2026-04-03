@@ -1,168 +1,59 @@
-# Affirm - 显化导师Agent
+# Affirm
 
-基于OpenClaw + Telegram构建的长期记忆AI导师，支持向量检索和每日自动归档。
+基于 Telegram 的 AI 显化导师项目，当前主链路是：
 
-## 🚀 快速开始
+- Telegram 对话
+- PostgreSQL 持久化
+- Knowledge RAG
+- Admin 后台管理
+- Notion 对话归档
 
-### 1. 环境准备
+当前最重要的说明不在旧的日报或 7 天计划里，而在新的流程文档里：
+
+- 文档入口：[docs/README.md](docs/README.md)
+- 项目概览：[docs/project/项目概述.md](docs/project/项目概述.md)
+- 开发总流程：[docs/development/00-开发总流程.md](docs/development/00-开发总流程.md)
+
+## 快速开始
+
 ```bash
-# 克隆项目
-git clone git@github.com:skelitalynn/Affirm.git
-cd Affirm
-
-# 配置环境变量
 cp .env.example .env
-# 编辑.env文件，填写你的API密钥
-
-# 安装依赖
 npm install
+npm run db:migrate
+npm run verify
+npm start
 ```
 
-### 2. 数据库初始化
+后台管理单独启动：
+
 ```bash
-# 确保PostgreSQL运行
-sudo systemctl start postgresql
-
-# 初始化数据库
-psql -f scripts/database/schemas/init.sql
+npm run admin
 ```
 
-### 3. 验证环境
+常用命令：
+
 ```bash
-# 快速验证
-./scripts/utils/quick-verify.sh
-
-# 详细验证
-node scripts/utils/verify-environment.js
+npm start
+npm run admin
+npm run db:migrate
+npm run test:unit
+npm run test:integration
+npm run lint
 ```
 
-### 4. 启动开发
-```bash
-# 查看开发计划
-cat docs/development/开发计划.md
+## 当前状态
 
-# 运行Day 1任务（示例）
-./scripts/development/day1-tasks.sh
-```
+- `knowledge RAG` 已切到 `LangChain + PGVectorStore`
+- `messages` 语义记忆当前停用，不要再按旧 embedding 链路开发
+- `EMBEDDING_API_KEY` 现在不是必填；未配置时，knowledge RAG 会退回本地 deterministic 向量
 
-## 📁 项目结构
+## 你应该从哪里开始
 
-```
-Affirm/
-├── docs/                    # 项目文档
-│   ├── project/            # 项目概述和架构
-│   ├── development/        # 开发计划和指南
-│   └── reports/            # 进度报告和总结
-├── scripts/                # 工具脚本
-│   ├── development/        # 开发自动化脚本
-│   ├── database/           # 数据库脚本
-│   └── utils/              # 工具和验证脚本
-├── src/                    # 源代码
-│   ├── config.js          # 配置管理
-│   └── db/connection.js   # 数据库连接
-├── tests/                  # 测试代码（预留）
-├── .env                   # 环境变量配置
-├── .gitignore            # Git忽略配置
-├── package.json          # 项目依赖配置
-└── README.md             # 本文件
-```
-
-## 📚 文档目录
-
-### 项目文档 (`docs/project/`)
-- `项目概述.md` - 完整项目说明、架构、技术栈
-- `数据库设计.md` - 数据库表结构和关系
-
-### 开发文档 (`docs/development/`)
-- `开发计划.md` - 7天详细开发计划
-- `开发指南.md` - 编码规范和最佳实践
-
-### 报告文档 (`docs/reports/`)
-- `day1-complete.md` - Day 1完成报告
-- 后续每日报告将在此目录生成
-
-## 🔧 工具脚本
-
-### 开发脚本 (`scripts/development/`)
-- `daily-development.sh` - 每日自动化开发脚本
-- `day1-tasks.sh` - Day 1具体任务脚本
-- 后续每日任务脚本将在此目录
-
-### 数据库脚本 (`scripts/database/`)
-- `schemas/init.sql` - 数据库初始化脚本
-- `migrations/` - 数据库迁移脚本（预留）
-
-### 工具脚本 (`scripts/utils/`)
-- `quick-verify.sh` - 快速环境验证
-- `verify-environment.js` - 完整环境验证
-- `test-database.js` - 数据库连接测试
-
-## ⚙️ 配置说明
-
-### 必需配置 (.env)
-```bash
-# 数据库
-DB_URL=postgresql://user:password@localhost:5432/dbname
-
-# Telegram
-TELEGRAM_BOT_TOKEN=your_bot_token
-
-# AI Provider（可选: deepseek 或 claude）
-AI_PROVIDER=deepseek
-
-# DeepSeek配置（优先使用）
-DEEPSEEK_API_KEY=your_deepseek_api_key_here
-DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
-
-# Claude配置（通过 AiGoCode OpenAI 兼容接口）
-CLAUDE_API_KEY=your_claude_api_key_here
-CLAUDE_BASE_URL=https://api.aigocode.com/v1
-CLAUDE_MODEL=claude-sonnet-4-5-latest
-
-# 兼容现有OpenAI配置（可选）
-OPENAI_API_KEY=your_openai_api_key_here
-OPENAI_BASE_URL=${DEEPSEEK_BASE_URL}
-MODEL_NAME=deepseek-reasoner
-
-# GitHub
-GITHUB_USERNAME=your_username
-GITHUB_REPO=Affirm
-```
-
-完整配置说明见 `docs/project/项目概述.md`
-
-## 🔌 端口策略
-
-- `Polling 模式`（`WEBHOOK_ENABLED=false`）：Telegram Bot 进程不提供对外 HTTP 端口。
-- `Webhook 模式`（`WEBHOOK_ENABLED=true`）：Webhook 服务监听 `3002`，健康检查使用 `http://localhost:3002/health`。
-- `Admin 管理后台`：独立服务端口 `3001`（命令：`npm run admin`）。
-- Docker 侧统一暴露 `3001`（admin）和 `3002`（webhook），不再暴露无效的 `3000`。
-
-## 📅 开发计划
-
-### 7天自动化开发
-- **Day 1**: 环境搭建 + 数据库 ✅ 完成
-- **Day 2**: 核心数据层 (2026-02-26)
-- **Day 3**: OpenClaw集成 (2026-02-27)
-- **Day 4**: Notion集成 (2026-02-28)
-- **Day 5**: 后台配置页 (2026-03-01)
-- **Day 6**: 测试优化 (2026-03-02)
-- **Day 7**: 部署上线 (2026-03-03)
-
-每日09:00自动执行开发任务，19:00发送进度报告。
-
-## 🆘 支持与帮助
-
-### 常见问题
-1. **数据库连接失败**: 运行 `./scripts/utils/quick-verify.sh`
-2. **环境配置问题**: 查看 `docs/project/项目概述.md`
-3. **开发流程问题**: 查看 `docs/development/开发计划.md`
-
-### 获取帮助
-- 查看详细文档: `docs/` 目录
-- 运行验证脚本: `scripts/utils/` 目录
-- 检查进度报告: `docs/reports/` 目录
-
-## 📄 许可证
-
-MIT License - 详见 LICENSE 文件
+1. 先看 [docs/development/01-环境启动与自检.md](docs/development/01-环境启动与自检.md)
+2. 再看 [docs/development/00-开发总流程.md](docs/development/00-开发总流程.md)
+3. 然后按你的任务选择对应流程文档：
+   - Telegram 主链路：[docs/development/02-Telegram-对话链路.md](docs/development/02-Telegram-对话链路.md)
+   - Knowledge RAG：[docs/development/03-Knowledge-RAG.md](docs/development/03-Knowledge-RAG.md)
+   - Admin 后台：[docs/development/04-Admin-后台.md](docs/development/04-Admin-后台.md)
+   - 数据库与迁移：[docs/development/05-数据库与迁移.md](docs/development/05-数据库与迁移.md)
+   - 测试与交付：[docs/development/06-测试与交付.md](docs/development/06-测试与交付.md)
