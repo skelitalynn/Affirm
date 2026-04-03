@@ -6,6 +6,7 @@ const Message = require('../models/message');
 const Knowledge = require('../models/knowledge');
 const AIService = require('./ai');
 const NotionService = require('./notion');
+const knowledgeVectorStore = require('./rag/knowledge-vector-store');
 const config = require('../config');
 const configManager = require('../config/manager'); // Day 3+ 配置管理
 const {
@@ -115,22 +116,30 @@ class TelegramService {
 
         // 健康检查端点
         app.get('/health', (req, res) => {
-            const embeddingEnabled = Boolean(config.embedding && config.embedding.apiKey);
+            const ragStatus = knowledgeVectorStore.getStatus();
+            const warnings = [
+                {
+                    code: 'MESSAGE_SEMANTIC_MEMORY_DISABLED',
+                    message: 'messages 语义记忆已停用，当前仅保留 knowledge RAG'
+                }
+            ];
             const payload = {
                 status: 'ok',
                 mode: 'webhook',
                 capabilities: {
-                    semanticSearch: embeddingEnabled ? 'enabled' : 'degraded'
+                    knowledgeSearch: ragStatus.degraded ? 'degraded' : 'enabled',
+                    semanticMemory: 'disabled'
                 }
             };
 
-            if (!embeddingEnabled) {
-                payload.warnings = [{
-                    code: 'EMBEDDING_API_KEY_MISSING',
-                    message: 'EMBEDDING_API_KEY 未配置，RAG/语义检索已降级（fallback 模式）'
-                }];
+            if (ragStatus.degraded) {
+                warnings.unshift({
+                    code: 'KNOWLEDGE_RAG_DETERMINISTIC_EMBEDDINGS',
+                    message: 'knowledge RAG 当前使用本地 deterministic 向量，检索质量有限'
+                });
             }
 
+            payload.warnings = warnings;
             res.json(payload);
         });
 

@@ -1,43 +1,29 @@
 // 消息数据模型
 const { db } = require('../db/connection');
-const embeddingService = require('../services/embedding');
+
+let semanticSearchDisabledLogged = false;
+
+function toVectorSql(embedding) {
+    if (Array.isArray(embedding) && embedding.length > 0) {
+        return `[${embedding.join(',')}]`;
+    }
+
+    if (typeof embedding === 'string' && embedding.trim()) {
+        return embedding.trim();
+    }
+
+    return null;
+}
 
 class Message {
     /**
-     * 创建消息（可选生成向量嵌入）
+     * 创建消息（可选接收外部已生成的向量）
      * @param {Object} messageData - 消息数据
      * @returns {Promise<Object>} 创建的消息
      */
     static async create(messageData) {
         const { user_id, role, content, embedding, metadata } = messageData;
-        
-        let finalEmbedding = embedding;
-        
-        // 如果未提供嵌入且内容不为空，自动生成嵌入
-        if (finalEmbedding === undefined && content && content.trim().length > 0) {
-            try {
-                finalEmbedding = await embeddingService.generateEmbedding(content);
-            } catch (error) {
-                console.error('❌ 生成消息向量嵌入失败:', error.message);
-                // 嵌入生成失败，存储为NULL（禁用语义检索）
-                finalEmbedding = null;
-            }
-        }
-
-        // 处理嵌入格式：如果是数组，使用embeddingService转换为pgvector SQL格式
-        let embeddingForQuery = null;
-        if (finalEmbedding !== null && finalEmbedding !== undefined) {
-            if (Array.isArray(finalEmbedding)) {
-                // 使用embeddingService转换为pgvector SQL格式
-                embeddingForQuery = embeddingService.toVectorSql(finalEmbedding);
-            } else if (typeof finalEmbedding === 'string') {
-                // 已经是字符串格式
-                embeddingForQuery = finalEmbedding;
-            } else {
-                console.warn('⚠️ 未知的嵌入格式，存储为NULL:', typeof finalEmbedding);
-                embeddingForQuery = null;
-            }
-        }
+        const embeddingForQuery = toVectorSql(embedding);
 
         const query = `
             INSERT INTO messages (user_id, role, content, embedding, metadata)
@@ -76,18 +62,11 @@ class Message {
      * @returns {Promise<Array>} 相似消息和分数
      */
     static async semanticSearch(embedding, userId = null, limit = 10, similarityThreshold = 0.7) {
-        // 如果embedding为null，返回空数组（禁用语义检索）
-        if (embedding === null) {
-            console.log('ℹ️  向量嵌入不可用，语义搜索被禁用');
+        if (!embedding || !Array.isArray(embedding) || embedding.length === 0) {
             return [];
         }
-        
-        if (!embedding || !Array.isArray(embedding)) {
-            throw new Error('查询向量必须是非空数组');
-        }
 
-        // 将向量数组转换为pgvector SQL格式
-        const vectorSql = embeddingService.toVectorSql(embedding);
+        const vectorSql = toVectorSql(embedding);
         if (!vectorSql) {
             console.warn('⚠️  无法转换向量格式，返回空数组');
             return [];
@@ -129,23 +108,19 @@ class Message {
      * @param {string} userId - 用户UUID（可选）
      * @param {number} limit - 返回数量
      * @param {number} similarityThreshold - 相似度阈值 (0-1)
-     * @returns {Promise<Array>} 相似消息和分数（如果embedding不可用则返回空数组）
+     * @returns {Promise<Array>} 当前阶段固定返回空数组
      */
     static async semanticSearchByText(queryText, userId = null, limit = 10, similarityThreshold = 0.7) {
         if (!queryText || queryText.trim().length === 0) {
             throw new Error('查询文本不能为空');
         }
 
-        // 生成查询文本的向量嵌入
-        const queryEmbedding = await embeddingService.generateEmbedding(queryText);
-        
-        // 如果embedding不可用（返回null），返回空数组
-        if (queryEmbedding === null) {
-            console.log('ℹ️  向量嵌入不可用，语义搜索被禁用');
-            return [];
+        if (!semanticSearchDisabledLogged) {
+            console.warn('ℹ️ messages 语义记忆暂未迁移到 LangChain，当前已停用文本语义检索');
+            semanticSearchDisabledLogged = true;
         }
 
-        return await this.semanticSearch(queryEmbedding, userId, limit, similarityThreshold);
+        return [];
     }
 
     /**
@@ -185,27 +160,8 @@ class Message {
      * @returns {Promise<Object>} 更新后的消息
      */
     static async update(id, updates) {
-        const { content, metadata } = updates;
-        
-        // 如果更新了内容，需要重新生成向量嵌入
-        let embeddingForQuery = null;
-        if (content && content.trim().length > 0) {
-            try {
-                const embedding = await embeddingService.generateEmbedding(content);
-                if (embedding !== null && embedding !== undefined) {
-                    if (Array.isArray(embedding)) {
-                        embeddingForQuery = embeddingService.toVectorSql(embedding);
-                    } else if (typeof embedding === 'string') {
-                        embeddingForQuery = embedding;
-                    } else {
-                        console.warn('⚠️ 未知的嵌入格式，跳过embedding更新:', typeof embedding);
-                    }
-                }
-            } catch (error) {
-                console.error('❌ 重新生成向量嵌入失败:', error.message);
-                // 不更新嵌入，保持原样
-            }
-        }
+        const { content, metadata, embedding } = updates;
+        const embeddingForQuery = toVectorSql(embedding);
 
         const fields = [];
         const values = [];
@@ -223,7 +179,7 @@ class Message {
             paramIndex++;
         }
 
-        if (embeddingForQuery) {
+        if (embeddingForQuery !== null) {
             fields.push(`embedding = $${paramIndex}::vector`);
             values.push(embeddingForQuery);
             paramIndex++;
@@ -338,7 +294,7 @@ class Message {
     }
 
     /**
-     * 获取用户最近的消息（用于embedding不可用时的fallback）
+     * 获取用户最近的消息（当前作为语义记忆停用时的主上下文来源）
      * @param {string} userId - 用户UUID
      * @param {number} limit - 限制数量（默认20）
      * @param {number} offset - 偏移量

@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS knowledge_chunks (
     content TEXT,
     source VARCHAR(255),
     embedding VECTOR(768),
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

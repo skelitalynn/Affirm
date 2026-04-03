@@ -1,85 +1,137 @@
 // 知识片段数据模型
+const { randomUUID } = require('crypto');
 const { db } = require('../db/connection');
-const embeddingService = require('../services/embedding');
+const knowledgeVectorStore = require('../services/rag/knowledge-vector-store');
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isPlainObject(value) {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeKnowledgeData(knowledgeData = {}) {
+    const normalized = {
+        user_id: knowledgeData.user_id ? String(knowledgeData.user_id).trim() : null,
+        content: typeof knowledgeData.content === 'string' ? knowledgeData.content.trim() : '',
+        source: typeof knowledgeData.source === 'string' && knowledgeData.source.trim()
+            ? knowledgeData.source.trim()
+            : 'user_input',
+        metadata: isPlainObject(knowledgeData.metadata) ? { ...knowledgeData.metadata } : {}
+    };
+
+    if (normalized.user_id && !UUID_PATTERN.test(normalized.user_id)) {
+        throw new Error('User ID 必须是有效 UUID');
+    }
+
+    return normalized;
+}
+
+function mapRowsById(rows = []) {
+    return new Map(rows.map((row) => [row.id, row]));
+}
 
 class Knowledge {
+    static async findByIds(ids = []) {
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return [];
+        }
+
+        const result = await db.query(`
+            SELECT *
+            FROM knowledge_chunks
+            WHERE id = ANY($1::uuid[])
+        `, [ids]);
+        const rowsById = mapRowsById(result.rows);
+
+        return ids.map((id) => rowsById.get(id)).filter(Boolean);
+    }
+
     /**
-     * 创建知识片段（自动生成向量嵌入）
+     * 创建知识片段（通过 LangChain PGVectorStore 写入）
      * @param {Object} knowledgeData - 知识数据
      * @returns {Promise<Object>} 创建的知识片段
      */
     static async create(knowledgeData) {
-        const { user_id, content, source } = knowledgeData;
-        
-        if (!content || content.trim().length === 0) {
+        const normalized = normalizeKnowledgeData(knowledgeData);
+
+        if (!normalized.content) {
             throw new Error('知识内容不能为空');
         }
 
-        // 生成向量嵌入
-        let embedding;
-        try {
-            embedding = await embeddingService.generateEmbedding(content);
-        } catch (error) {
-            console.error('❌ 生成向量嵌入失败，返回null:', error.message);
-            embedding = null; // 禁止随机向量降级
+        const id = randomUUID();
+
+        await knowledgeVectorStore.addKnowledge({
+            id,
+            ...normalized
+        });
+
+        const created = await this.findById(id);
+        if (!created) {
+            throw new Error('知识片段写入后读取失败');
         }
 
-        // 处理嵌入格式：如果是数组，使用embeddingService转换为pgvector SQL格式
-        let embeddingForQuery = null;
-        if (embedding !== null && embedding !== undefined) {
-            if (Array.isArray(embedding)) {
-                // 使用embeddingService转换为pgvector SQL格式
-                embeddingForQuery = embeddingService.toVectorSql(embedding);
-            } else if (typeof embedding === 'string') {
-                // 已经是字符串格式
-                embeddingForQuery = embedding;
-            } else {
-                console.warn('⚠️ 未知的嵌入格式，存储为NULL:', typeof embedding);
-                embeddingForQuery = null;
-            }
-        }
-
-        const query = `
-            INSERT INTO knowledge_chunks (user_id, content, source, embedding)
-            VALUES ($1, $2, $3, $4)
-            RETURNING *
-        `;
-        const values = [user_id, content, source || 'user_input', embeddingForQuery];
-
-        try {
-            const result = await db.query(query, values);
-            return result.rows[0];
-        } catch (error) {
-            console.error('❌ 创建知识片段失败:', error.message);
-            console.error('错误详情:', error.code, error.detail);
-            throw error;
-        }
+        return created;
     }
 
     /**
      * 批量创建知识片段
      * @param {Array<Object>} knowledgeArray - 知识数据数组
-     * @returns {Promise<Array<Object>>} 创建的知识片段数组
+     * @returns {Promise<Array<Object>|Object>} 创建结果
      */
     static async createBatch(knowledgeArray, options = {}) {
         if (!Array.isArray(knowledgeArray) || knowledgeArray.length === 0) {
             throw new Error('知识数据数组不能为空');
         }
 
+        const pendingItems = [];
         const successfulItems = [];
         const failedItems = [];
 
         for (const [index, knowledgeData] of knowledgeArray.entries()) {
             try {
-                const result = await this.create(knowledgeData);
-                successfulItems.push(result);
+                const normalized = normalizeKnowledgeData(knowledgeData);
+                if (!normalized.content) {
+                    throw new Error('知识内容不能为空');
+                }
+
+                pendingItems.push({
+                    id: randomUUID(),
+                    index,
+                    ...normalized
+                });
             } catch (error) {
-                console.error(`❌ 创建知识片段失败 (跳过):`, error.message);
                 failedItems.push({
                     index,
                     source: knowledgeData?.source || null,
                     error: error.message
                 });
+            }
+        }
+
+        if (pendingItems.length > 0) {
+            try {
+                await knowledgeVectorStore.addKnowledgeBatch(pendingItems);
+                const createdRows = await this.findByIds(pendingItems.map((item) => item.id));
+                successfulItems.push(...createdRows);
+            } catch (batchError) {
+                console.error('⚠️ LangChain 批量写入失败，降级为逐条写入:', batchError.message);
+
+                for (const item of pendingItems) {
+                    try {
+                        await knowledgeVectorStore.addKnowledge(item);
+                        const created = await this.findById(item.id);
+                        if (!created) {
+                            throw new Error('知识片段写入后读取失败');
+                        }
+                        successfulItems.push(created);
+                    } catch (error) {
+                        failedItems.push({
+                            index: item.index,
+                            source: item.source || null,
+                            error: error.message
+                        });
+                    }
+                }
             }
         }
 
@@ -116,9 +168,9 @@ class Knowledge {
      */
     static async findByUserId(userId, limit = 100, offset = 0) {
         const query = `
-            SELECT * FROM knowledge_chunks 
+            SELECT * FROM knowledge_chunks
             WHERE user_id = $1
-            ORDER BY created_at DESC 
+            ORDER BY created_at DESC
             LIMIT $2 OFFSET $3
         `;
         const result = await db.query(query, [userId, limit, offset]);
@@ -134,9 +186,9 @@ class Knowledge {
      */
     static async findBySource(source, limit = 100, offset = 0) {
         const query = `
-            SELECT * FROM knowledge_chunks 
+            SELECT * FROM knowledge_chunks
             WHERE source = $1
-            ORDER BY created_at DESC 
+            ORDER BY created_at DESC
             LIMIT $2 OFFSET $3
         `;
         const result = await db.query(query, [source, limit, offset]);
@@ -144,7 +196,7 @@ class Knowledge {
     }
 
     /**
-     * 语义搜索：根据查询文本查找相关知识片段
+     * 语义搜索：基于 LangChain PGVectorStore 检索知识片段
      * @param {string} queryText - 查询文本
      * @param {string} userId - 用户UUID（可选）
      * @param {number} limit - 返回数量
@@ -156,137 +208,145 @@ class Knowledge {
             throw new Error('查询文本不能为空');
         }
 
-        // 生成查询文本的向量嵌入
-        let queryEmbedding;
         try {
-            queryEmbedding = await embeddingService.generateEmbedding(queryText);
+            const rawResults = await knowledgeVectorStore.similaritySearch(queryText, {
+                limit,
+                filter: userId ? { user_id: userId } : undefined
+            });
+            const matchedResults = rawResults.filter((item) => item.similarity >= similarityThreshold);
+
+            if (matchedResults.length === 0) {
+                return [];
+            }
+
+            const rows = await this.findByIds(matchedResults.map((item) => item.id));
+            const rowsById = mapRowsById(rows);
+
+            return matchedResults.map((item) => {
+                const row = rowsById.get(item.id);
+                if (row) {
+                    return {
+                        ...row,
+                        similarity: item.similarity
+                    };
+                }
+
+                return {
+                    id: item.id,
+                    content: item.content,
+                    source: item.metadata?.source || null,
+                    user_id: item.metadata?.user_id || null,
+                    metadata: item.metadata || {},
+                    similarity: item.similarity
+                };
+            });
         } catch (error) {
-            console.error('❌ 生成查询向量失败:', error.message);
-            return [];
-        }
-
-        if (queryEmbedding === null) {
-            console.log('ℹ️  向量嵌入不可用，知识语义搜索被禁用');
-            return [];
-        }
-
-        const queryVector = embeddingService.toVectorSql(queryEmbedding);
-        if (!queryVector) {
-            console.warn('⚠️  无法转换查询向量格式，返回空数组');
-            return [];
-        }
-
-        // 构建查询
-        let query;
-        let values;
-        
-        if (userId) {
-            query = `
-                SELECT *, 
-                       (1 - (embedding <=> $1::vector)) as similarity
-                FROM knowledge_chunks 
-                WHERE embedding IS NOT NULL
-                  AND user_id = $2 
-                  AND (1 - (embedding <=> $1::vector)) > $3
-                ORDER BY embedding <=> $1::vector
-                LIMIT $4
-            `;
-            values = [queryVector, userId, similarityThreshold, limit];
-        } else {
-            query = `
-                SELECT *, 
-                       (1 - (embedding <=> $1::vector)) as similarity
-                FROM knowledge_chunks 
-                WHERE embedding IS NOT NULL
-                  AND (1 - (embedding <=> $1::vector)) > $2
-                ORDER BY embedding <=> $1::vector
-                LIMIT $3
-            `;
-            values = [queryVector, similarityThreshold, limit];
-        }
-
-        try {
-            const result = await db.query(query, values);
-            return result.rows;
-        } catch (error) {
-            console.error('❌ 语义搜索失败:', error.message);
+            console.error('❌ 知识语义搜索失败:', error.message);
             return [];
         }
     }
 
     /**
-     * 更新知识片段内容（重新生成向量嵌入）
+     * 更新知识片段内容
      * @param {string} id - 知识片段UUID
      * @param {Object} updates - 更新字段
      * @returns {Promise<Object>} 更新后的知识片段
      */
     static async update(id, updates) {
-        const { content, source } = updates;
-        
-        // 如果更新了内容，需要重新生成向量嵌入
-        let embeddingForQuery = null;
-        if (content && content.trim().length > 0) {
-            try {
-                const embedding = await embeddingService.generateEmbedding(content);
-                if (embedding !== null && embedding !== undefined) {
-                    if (Array.isArray(embedding)) {
-                        embeddingForQuery = embeddingService.toVectorSql(embedding);
-                    } else if (typeof embedding === 'string') {
-                        embeddingForQuery = embedding;
-                    } else {
-                        console.warn('⚠️ 未知的嵌入格式，跳过embedding更新:', typeof embedding);
-                    }
-                }
-            } catch (error) {
-                console.error('❌ 重新生成向量嵌入失败:', error.message);
-                // 不更新嵌入，保持原样
-            }
+        if (
+            updates.content === undefined
+            && updates.source === undefined
+            && updates.user_id === undefined
+            && updates.metadata === undefined
+        ) {
+            throw new Error('没有提供更新字段');
         }
+
+        const existing = await this.findById(id);
+        if (!existing) {
+            throw new Error('知识片段不存在');
+        }
+
+        const normalizedUpdates = {
+            content: updates.content !== undefined ? String(updates.content).trim() : existing.content,
+            source: updates.source !== undefined
+                ? (String(updates.source).trim() || 'user_input')
+                : existing.source,
+            user_id: updates.user_id !== undefined
+                ? (updates.user_id ? String(updates.user_id).trim() : null)
+                : existing.user_id,
+            metadata: updates.metadata !== undefined
+                ? (isPlainObject(updates.metadata) ? { ...updates.metadata } : {})
+                : (isPlainObject(existing.metadata) ? { ...existing.metadata } : {})
+        };
+
+        if (!normalizedUpdates.content) {
+            throw new Error('知识内容不能为空');
+        }
+
+        if (normalizedUpdates.user_id && !UUID_PATTERN.test(normalizedUpdates.user_id)) {
+            throw new Error('User ID 必须是有效 UUID');
+        }
+
+        const metadata = knowledgeVectorStore.buildMetadata({
+            user_id: normalizedUpdates.user_id,
+            source: normalizedUpdates.source,
+            metadata: normalizedUpdates.metadata
+        });
 
         const fields = [];
         const values = [];
         let paramIndex = 1;
 
-        if (content !== undefined) {
+        if (updates.content !== undefined) {
             fields.push(`content = $${paramIndex}`);
-            values.push(content);
-            paramIndex++;
+            values.push(normalizedUpdates.content);
+            paramIndex += 1;
         }
 
-        if (source !== undefined) {
+        if (updates.source !== undefined) {
             fields.push(`source = $${paramIndex}`);
-            values.push(source);
-            paramIndex++;
+            values.push(normalizedUpdates.source);
+            paramIndex += 1;
         }
 
-        if (embeddingForQuery) {
+        if (updates.user_id !== undefined) {
+            fields.push(`user_id = $${paramIndex}`);
+            values.push(normalizedUpdates.user_id);
+            paramIndex += 1;
+        }
+
+        fields.push(`metadata = $${paramIndex}::jsonb`);
+        values.push(JSON.stringify(metadata));
+        paramIndex += 1;
+
+        if (updates.content !== undefined) {
+            const embedding = await knowledgeVectorStore.embedText(normalizedUpdates.content);
+            const embeddingSql = knowledgeVectorStore.toVectorSql(embedding);
+
+            if (!embeddingSql) {
+                throw new Error('知识向量生成失败');
+            }
+
             fields.push(`embedding = $${paramIndex}::vector`);
-            values.push(embeddingForQuery);
-            paramIndex++;
-        }
-
-        if (fields.length === 0) {
-            throw new Error('没有提供更新字段');
+            values.push(embeddingSql);
+            paramIndex += 1;
         }
 
         values.push(id);
         const query = `
-            UPDATE knowledge_chunks 
+            UPDATE knowledge_chunks
             SET ${fields.join(', ')}
             WHERE id = $${paramIndex}
             RETURNING *
         `;
 
-        try {
-            const result = await db.query(query, values);
-            if (result.rows.length === 0) {
-                throw new Error('知识片段不存在');
-            }
-            return result.rows[0];
-        } catch (error) {
-            console.error('❌ 更新知识片段失败:', error.message);
-            throw error;
+        const result = await db.query(query, values);
+        if (result.rows.length === 0) {
+            throw new Error('知识片段不存在');
         }
+
+        return result.rows[0];
     }
 
     /**
@@ -337,10 +397,10 @@ class Knowledge {
      */
     static async findAll(limit = 100, offset = 0) {
         const query = `
-            SELECT k.*, u.username, u.telegram_id 
+            SELECT k.*, u.username, u.telegram_id
             FROM knowledge_chunks k
             LEFT JOIN users u ON k.user_id = u.id
-            ORDER BY k.created_at DESC 
+            ORDER BY k.created_at DESC
             LIMIT $1 OFFSET $2
         `;
         const result = await db.query(query, [limit, offset]);
@@ -353,9 +413,8 @@ class Knowledge {
      */
     static async test() {
         try {
-            // 测试创建
             const testKnowledge = {
-                user_id: '00000000-0000-0000-0000-000000000000', // 测试用户ID
+                user_id: '00000000-0000-0000-0000-000000000000',
                 content: '这是一个测试知识片段',
                 source: 'test'
             };
@@ -365,18 +424,16 @@ class Knowledge {
                 throw new Error('创建知识片段失败');
             }
 
-            // 测试语义搜索
             const searchResults = await this.semanticSearch('测试知识', null, 5);
             if (!Array.isArray(searchResults)) {
                 throw new Error('语义搜索返回格式不正确');
             }
 
-            // 清理测试数据
             await this.delete(created.id);
 
             console.log('✅ 知识片段功能测试成功');
             console.log(`📊 语义搜索返回: ${searchResults.length} 个结果`);
-            
+
             return true;
         } catch (error) {
             console.error('❌ 知识片段功能测试失败:', error.message);

@@ -86,7 +86,8 @@ const config = {
         };
     })(),
     
-    // Embedding配置 - 独立于主AI Provider，用于向量嵌入生成
+    // Knowledge RAG 向量配置
+    // EMBEDDING_API_KEY 现在是可选项；未配置时会在 knowledge RAG 中走本地 deterministic fallback
     embedding: {
         provider: process.env.EMBEDDING_PROVIDER || 'openai',
         apiKey: process.env.EMBEDDING_API_KEY,
@@ -94,6 +95,7 @@ const config = {
         model: process.env.EMBEDDING_MODEL || 'text-embedding-3-small',
         dimensions: parseInt(process.env.EMBEDDING_DIMENSIONS) || 768
     },
+
 
     // Redis 配置（BullMQ 持久化队列）
     redis: {
@@ -144,11 +146,9 @@ if (!aiConfig.apiKey) {
     console.warn('   - openai: OPENAI_API_KEY');
 }
 
-// 验证Embedding配置
+// 验证 Knowledge RAG 配置
 if (!config.embedding.apiKey) {
-    console.warn('⚠️  未配置EMBEDDING_API_KEY，向量嵌入功能将不可用');
-    console.warn('💡 请设置 EMBEDDING_API_KEY（推荐使用OpenAI key）');
-    console.warn('   RAG语义检索依赖此配置');
+    console.log('ℹ️ 未配置 EMBEDDING_API_KEY，knowledge RAG 将自动回退到本地 deterministic 向量');
 }
 
 module.exports = config;

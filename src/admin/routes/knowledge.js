@@ -23,7 +23,10 @@ function normalizeKnowledgePayload(body = {}) {
     return {
         user_id: body.user_id ? body.user_id.trim() : null,
         content: body.content ? body.content.trim() : '',
-        source: body.source ? body.source.trim() : 'admin'
+        source: body.source ? body.source.trim() : 'admin',
+        metadata: {
+            created_by: 'admin'
+        }
     };
 }
 
@@ -149,12 +152,21 @@ router.post('/import', async (req, res) => {
             source: source ? source.trim() : 'admin-import',
             text: items
         });
+        const importBatch = `admin-import-${Date.now()}`;
 
         if (knowledgeItems.length === 0) {
             return res.redirect('/admin/knowledge/import?error=' + encodeURIComponent('未生成有效的知识片段，请检查输入内容'));
         }
 
-        const result = await Knowledge.createBatch(knowledgeItems, { detailed: true });
+        const result = await Knowledge.createBatch(knowledgeItems.map((item, index) => ({
+            ...item,
+            metadata: {
+                created_by: 'admin',
+                import_batch: importBatch,
+                chunk_index: index,
+                chunk_count: knowledgeItems.length
+            }
+        })), { detailed: true });
         const { total, successCount, failureCount, failedItems } = result;
 
         if (failureCount > 0) {
