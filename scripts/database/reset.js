@@ -15,6 +15,7 @@ async function runReset() {
 
     try {
         await client.query('BEGIN');
+        await client.query('DROP TABLE IF EXISTS schema_migrations CASCADE');
         await client.query('DROP TABLE IF EXISTS messages CASCADE');
         await client.query('DROP TABLE IF EXISTS knowledge_chunks CASCADE');
         await client.query('DROP TABLE IF EXISTS profiles CASCADE');

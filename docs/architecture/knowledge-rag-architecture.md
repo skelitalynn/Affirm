@@ -36,6 +36,8 @@
 2. `OPENAI_API_KEY`
 3. 本地 deterministic 向量
 
+如果前两者存在但远程 embeddings 返回鉴权或网络错误，运行时会自动降级到 deterministic 向量。
+
 这意味着：
 
 - 你不需要单独配置 embedding key 才能跑通系统

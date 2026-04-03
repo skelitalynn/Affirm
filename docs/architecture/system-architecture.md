@@ -76,7 +76,7 @@ Database
 - `knowledge_chunks` 是当前唯一仍在使用的向量检索表
 - 写入和检索都通过 `LangChain PGVectorStore`
 - 写入时使用 `metadata` 同步 `source` 和 `user_id`
-- 没有远程 embedding key 时，退回 deterministic 向量
+- 没有远程 embedding key，或远程 embeddings 实际不可用时，退回 deterministic 向量
 
 详细见：[knowledge-rag-architecture.md](knowledge-rag-architecture.md)
 

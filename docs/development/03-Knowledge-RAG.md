@@ -68,7 +68,7 @@ Telegram userMessage
 
 - `knowledge_chunks` 是当前唯一有效的 RAG 表
 - `knowledge` 的向量写入和查询都依赖 LangChain
-- 远程 embedding key 缺失时，只能得到 deterministic fallback
+- 远程 embedding key 缺失，或远程 embeddings 实际不可用时，只能得到 deterministic fallback
 - `messages` 语义记忆不属于当前 RAG 主线
 
 ## 7. 最小验证方式

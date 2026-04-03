@@ -74,6 +74,16 @@ class KnowledgeVectorStore {
         this.runtime = this.createRuntime();
     }
 
+    createDeterministicRuntime() {
+        return {
+            mode: 'deterministic',
+            provider: 'local',
+            model: 'deterministic-sha256',
+            dimensions: this.dimensions,
+            embeddings: new DeterministicEmbeddings(this.dimensions)
+        };
+    }
+
     createRuntime() {
         const embeddingConfig = config.embedding || {};
         const aiConfig = config.ai || {};
@@ -143,13 +153,7 @@ class KnowledgeVectorStore {
 
         console.warn('⚠️ 未配置可用的远程 Embeddings，knowledge RAG 将退回本地 deterministic 向量');
 
-        return {
-            mode: 'deterministic',
-            provider: 'local',
-            model: 'deterministic-sha256',
-            dimensions: this.dimensions,
-            embeddings: new DeterministicEmbeddings(this.dimensions)
-        };
+        return this.createDeterministicRuntime();
     }
 
     getStatus() {
@@ -276,12 +280,87 @@ class KnowledgeVectorStore {
         return store;
     }
 
+    shouldFallbackToDeterministic(error) {
+        if (!error || this.runtime.mode !== 'openai-compatible') {
+            return false;
+        }
+
+        const fallbackCodes = new Set([
+            'invalid_api_key',
+            'insufficient_quota',
+            'rate_limited',
+            'ECONNABORTED',
+            'ECONNREFUSED',
+            'ECONNRESET',
+            'ENETUNREACH',
+            'ENOTFOUND',
+            'ETIMEDOUT'
+        ]);
+        const fallbackStatuses = new Set([401, 403, 408, 429, 500, 502, 503, 504]);
+        const rawMessage = [
+            error.message,
+            error.code,
+            error.type,
+            error.lc_error_code
+        ].filter(Boolean).join(' ').toLowerCase();
+
+        if (error.code && fallbackCodes.has(String(error.code))) {
+            return true;
+        }
+
+        if (error.status && fallbackStatuses.has(Number(error.status))) {
+            return true;
+        }
+
+        return [
+            'incorrect api key',
+            'authentication',
+            'unauthorized',
+            'invalid_api_key',
+            'insufficient_quota',
+            'rate limit',
+            'fetch failed',
+            'network',
+            'timeout',
+            'timed out',
+            'econnrefused',
+            'econnreset',
+            'enetunreach',
+            'enotfound'
+        ].some((fragment) => rawMessage.includes(fragment));
+    }
+
+    fallbackToDeterministic(error) {
+        if (this.runtime.mode === 'deterministic') {
+            return false;
+        }
+
+        const reason = error?.message || '远程 Embeddings 不可用';
+        console.warn(`⚠️  远程 Embeddings 不可用，knowledge RAG 自动降级为 deterministic 向量: ${reason}`);
+        this.runtime = this.createDeterministicRuntime();
+        this.storePromise = null;
+        return true;
+    }
+
+    async withEmbeddingFallback(operation) {
+        try {
+            return await operation();
+        } catch (error) {
+            if (!this.shouldFallbackToDeterministic(error)) {
+                throw error;
+            }
+
+            this.fallbackToDeterministic(error);
+            return operation();
+        }
+    }
+
     async embedText(text) {
         if (!text || !String(text).trim()) {
             throw new Error('文本不能为空');
         }
 
-        return this.runtime.embeddings.embedQuery(String(text));
+        return this.withEmbeddingFallback(() => this.runtime.embeddings.embedQuery(String(text)));
     }
 
     toVectorSql(vector) {
@@ -317,23 +396,27 @@ class KnowledgeVectorStore {
             return [];
         }
 
-        const store = await this.getStore();
         const documents = payloads.map((payload) => this.buildDocument(payload));
         const ids = payloads.map((payload) => payload.id);
 
-        await store.addDocuments(documents, { ids });
-        await this.syncInsertedRows(ids);
+        await this.withEmbeddingFallback(async () => {
+            const store = await this.getStore();
+            await store.addDocuments(documents, { ids });
+            await this.syncInsertedRows(ids);
+        });
 
         return ids;
     }
 
     async similaritySearch(queryText, options = {}) {
-        const store = await this.getStore();
         const limit = Math.max(1, parseInt(options.limit, 10) || 10);
         const filter = isPlainObject(options.filter) && Object.keys(options.filter).length > 0
             ? options.filter
             : undefined;
-        const results = await store.similaritySearchWithScore(queryText, limit, filter);
+        const results = await this.withEmbeddingFallback(async () => {
+            const store = await this.getStore();
+            return store.similaritySearchWithScore(queryText, limit, filter);
+        });
 
         return results.map(([doc, similarity]) => ({
             id: doc.id,

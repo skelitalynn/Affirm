@@ -45,7 +45,7 @@ npm run lint
 
 - `knowledge RAG` 已切到 `LangChain + PGVectorStore`
 - `messages` 语义记忆当前停用，不要再按旧 embedding 链路开发
-- `EMBEDDING_API_KEY` 现在不是必填；未配置时，knowledge RAG 会退回本地 deterministic 向量
+- `EMBEDDING_API_KEY` 现在不是必填；未配置或远程 embeddings 不可用时，knowledge RAG 会退回本地 deterministic 向量
 
 ## 你应该从哪里开始
 

@@ -4,6 +4,62 @@ const path = require('path');
 const { Pool } = require('pg');
 require('dotenv').config();
 
+const MIGRATIONS_TABLE = 'schema_migrations';
+
+async function ensureMigrationsTable(client) {
+    await client.query(`
+        CREATE TABLE IF NOT EXISTS ${MIGRATIONS_TABLE} (
+            filename VARCHAR(255) PRIMARY KEY,
+            applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+}
+
+function getMigrationFiles() {
+    const migrationsDir = path.resolve(__dirname, '..', '..', 'migrations');
+
+    if (!fs.existsSync(migrationsDir)) {
+        return [];
+    }
+
+    return fs.readdirSync(migrationsDir)
+        .filter((filename) => filename.endsWith('.sql'))
+        .sort()
+        .map((filename) => ({
+            filename,
+            filepath: path.join(migrationsDir, filename)
+        }));
+}
+
+async function getAppliedMigrations(client) {
+    const result = await client.query(`SELECT filename FROM ${MIGRATIONS_TABLE}`);
+    return new Set(result.rows.map((row) => row.filename));
+}
+
+async function applyMigration(client, migration) {
+    const sql = fs.readFileSync(migration.filepath, 'utf8').trim();
+
+    if (!sql) {
+        console.log(`⏭️  跳过空迁移: ${migration.filename}`);
+        return;
+    }
+
+    await client.query('BEGIN');
+
+    try {
+        await client.query(sql);
+        await client.query(
+            `INSERT INTO ${MIGRATIONS_TABLE} (filename) VALUES ($1)`,
+            [migration.filename]
+        );
+        await client.query('COMMIT');
+        console.log(`✅ 已应用迁移: ${migration.filename}`);
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw new Error(`${migration.filename} 执行失败: ${error.message}`);
+    }
+}
+
 async function runMigrate() {
     if (!process.env.DB_URL) {
         throw new Error('DB_URL 未配置，无法执行迁移');
@@ -23,6 +79,20 @@ async function runMigrate() {
         }
 
         await client.query(schemaSql);
+        await ensureMigrationsTable(client);
+
+        const migrations = getMigrationFiles();
+        const appliedMigrations = await getAppliedMigrations(client);
+
+        for (const migration of migrations) {
+            if (appliedMigrations.has(migration.filename)) {
+                console.log(`⏭️  已跳过迁移: ${migration.filename}`);
+                continue;
+            }
+
+            await applyMigration(client, migration);
+        }
+
         console.log('✅ 数据库迁移完成');
     } finally {
         client.release();
