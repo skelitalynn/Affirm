@@ -1,4 +1,4 @@
-// AI模型集成 - 支持DeepSeek和OpenAI
+// AI模型集成 - 支持 OpenAI-compatible 代理和 OpenAI
 const OpenAI = require('openai');
 
 class AIModel {
@@ -10,13 +10,12 @@ class AIModel {
     async initialize() {
         console.log('🤖 初始化AI模型...');
         
-        // 优先使用DeepSeek配置，兼容现有OpenAI配置
-        const apiKey = this.config.deepseekApiKey || this.config.openaiApiKey;
-        const baseURL = this.config.deepseekBaseUrl || this.config.openaiBaseUrl || 'https://api.deepseek.com/v1';
-        this.model = this.config.model || 'deepseek-reasoner';
+        const apiKey = this.config.aiApiKey || this.config.apiKey || this.config.aigocodeApiKey || this.config.claudeApiKey || this.config.openaiApiKey;
+        const baseURL = this.config.aiBaseUrl || this.config.baseURL || this.config.aigocodeBaseUrl || this.config.claudeBaseUrl || this.config.openaiBaseUrl || 'https://api.openai.com/v1';
+        this.model = this.config.aiModel || this.config.model || 'gpt-4';
         
         if (!apiKey) {
-            throw new Error('AI API密钥未配置 (需要deepseekApiKey或openaiApiKey)');
+            throw new Error('AI API密钥未配置 (需要aiApiKey/apiKey或兼容别名)');
         }
 
         // 创建OpenAI兼容客户端

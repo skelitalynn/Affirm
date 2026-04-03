@@ -1,31 +1,24 @@
 #!/usr/bin/env node
 /**
  * AI连接测试脚本
- * 测试Claude/AiGoCode API连接
+ * 测试 AiGoCode/OpenAI 兼容 API 连接
  */
 
 require('dotenv').config();
 const OpenAI = require('openai');
+const { resolveAIConfig } = require('../src/config/ai-config');
 
 async function testAIConnection() {
     console.log('🔍 AI连接测试\n');
     
-    // 读取配置
-    const provider = process.env.AI_PROVIDER || 'deepseek';
-    const apiKey = provider === 'claude' 
-        ? process.env.CLAUDE_API_KEY || process.env.OPENAI_API_KEY
-        : process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY;
-    
-    const baseURL = provider === 'claude'
-        ? process.env.CLAUDE_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.aigocode.com/v1'
-        : process.env.DEEPSEEK_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.deepseek.com/v1';
-    
-    const model = provider === 'claude'
-        ? process.env.CLAUDE_MODEL || process.env.MODEL_NAME || 'claude-sonnet-4-5-latest'
-        : process.env.MODEL_NAME || 'deepseek-reasoner';
+    const aiConfig = resolveAIConfig(process.env);
+    const providerType = aiConfig.providerType;
+    const apiKey = aiConfig.apiKey;
+    const baseURL = aiConfig.baseURL;
+    const model = aiConfig.model;
     
     console.log('📊 配置信息:');
-    console.log(`   提供商: ${provider}`);
+    console.log(`   Provider Type: ${providerType}`);
     console.log(`   API密钥: ${apiKey ? apiKey.substring(0, 10) + '...' + apiKey.substring(apiKey.length - 4) : '未配置'}`);
     console.log(`   基础URL: ${baseURL}`);
     console.log(`   模型: ${model}`);
@@ -107,11 +100,11 @@ async function testAIConnection() {
             
             // 测试不同的端点
             console.error('\n🔄 测试备用端点...');
+            const normalizedBaseUrl = baseURL.replace(/\/$/, '');
             const endpoints = [
-                baseURL,
-                baseURL.replace('/v1', ''),
-                'https://api.openai.com/v1',
-                'https://api.deepseek.com/v1'
+                normalizedBaseUrl,
+                normalizedBaseUrl.endsWith('/v1') ? normalizedBaseUrl.replace(/\/v1$/, '') : `${normalizedBaseUrl}/v1`,
+                'https://api.openai.com/v1'
             ];
             
             for (const endpoint of endpoints) {

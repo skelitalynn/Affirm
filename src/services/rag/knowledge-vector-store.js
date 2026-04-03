@@ -86,11 +86,8 @@ class KnowledgeVectorStore {
 
     createRuntime() {
         const embeddingConfig = config.embedding || {};
-        const aiConfig = config.ai || {};
         const explicitEmbeddingKey = embeddingConfig.apiKey ? embeddingConfig.apiKey.trim() : '';
         const explicitEmbeddingBaseUrl = sanitizeBaseUrl(embeddingConfig.baseURL);
-        const sharedOpenAiKey = process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.trim() : '';
-        const sharedOpenAiBaseUrl = sanitizeBaseUrl(process.env.OPENAI_BASE_URL) || 'https://api.openai.com/v1';
         const embeddingModel = embeddingConfig.model || 'text-embedding-3-small';
 
         if (explicitEmbeddingKey) {
@@ -107,44 +104,6 @@ class KnowledgeVectorStore {
                     ...(explicitEmbeddingBaseUrl && {
                         configuration: {
                             baseURL: explicitEmbeddingBaseUrl
-                        }
-                    })
-                })
-            };
-        }
-
-        if (sharedOpenAiKey) {
-            return {
-                mode: 'openai-compatible',
-                provider: 'openai-shared',
-                model: embeddingModel,
-                dimensions: this.dimensions,
-                embeddings: new OpenAIEmbeddings({
-                    apiKey: sharedOpenAiKey,
-                    model: embeddingModel,
-                    dimensions: this.dimensions,
-                    batchSize: 50,
-                    configuration: {
-                        baseURL: sharedOpenAiBaseUrl
-                    }
-                })
-            };
-        }
-
-        if (aiConfig.provider === 'openai' && aiConfig.apiKey) {
-            return {
-                mode: 'openai-compatible',
-                provider: 'openai',
-                model: embeddingModel,
-                dimensions: this.dimensions,
-                embeddings: new OpenAIEmbeddings({
-                    apiKey: aiConfig.apiKey,
-                    model: embeddingModel,
-                    dimensions: this.dimensions,
-                    batchSize: 50,
-                    ...(sanitizeBaseUrl(aiConfig.baseURL) && {
-                        configuration: {
-                            baseURL: sanitizeBaseUrl(aiConfig.baseURL)
                         }
                     })
                 })

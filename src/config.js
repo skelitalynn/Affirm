@@ -1,5 +1,6 @@
 // 项目配置文件
 require('dotenv').config();
+const { resolveAIConfig } = require('./config/ai-config');
 
 const config = {
     // 数据库配置
@@ -33,58 +34,8 @@ const config = {
         skillDatabaseId: process.env.NOTION_DATABASE_ID
     },
     
-    // AI模型配置 - 支持多提供商，无降级逻辑
-    ai: (() => {
-        const provider = (process.env.AI_PROVIDER || 'deepseek').toLowerCase();
-        
-        // 提供商配置映射
-        const providerConfigs = {
-            deepseek: {
-                apiKey: process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY,
-                baseURL: process.env.DEEPSEEK_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.deepseek.com/v1',
-                defaultModel: 'deepseek-reasoner'
-            },
-            claude: {
-                apiKey: process.env.CLAUDE_API_KEY || process.env.OPENAI_API_KEY,
-                baseURL: process.env.CLAUDE_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.aigocode.com/v1',
-                defaultModel: 'claude-sonnet-4-6'
-            },
-            openai: {
-                apiKey: process.env.OPENAI_API_KEY,
-                baseURL: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
-                defaultModel: 'gpt-4'
-            }
-            // 未来可以添加更多提供商，如gemini
-        };
-        
-        // 获取当前提供商的配置
-        const providerConfig = providerConfigs[provider];
-        if (!providerConfig) {
-            console.warn(`⚠️  不支持的AI提供商: ${provider}，默认使用deepseek`);
-            return providerConfigs.deepseek;
-        }
-        
-        // 确定模型名称：优先使用AI_MODEL，然后使用provider特定的MODEL，最后使用默认
-        let model;
-        if (process.env.AI_MODEL) {
-            model = process.env.AI_MODEL;
-        } else if (provider === 'claude' && process.env.CLAUDE_MODEL) {
-            model = process.env.CLAUDE_MODEL;
-        } else if (process.env.MODEL_NAME) {
-            model = process.env.MODEL_NAME; // 向后兼容
-        } else {
-            model = providerConfig.defaultModel;
-        }
-        
-        return {
-            provider: provider,
-            apiKey: providerConfig.apiKey,
-            baseURL: providerConfig.baseURL,
-            model: model,
-            temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
-            maxTokens: parseInt(process.env.AI_MAX_TOKENS) || 1000
-        };
-    })(),
+    // AI模型配置 - 统一收敛为 OpenAI-compatible 配置
+    ai: resolveAIConfig(process.env),
     
     // Knowledge RAG 向量配置
     // EMBEDDING_API_KEY 现在是可选项；未配置时会在 knowledge RAG 中走本地 deterministic fallback
@@ -140,10 +91,8 @@ requiredEnvVars.forEach(varName => {
 const aiConfig = config.ai;
 if (!aiConfig.apiKey) {
     console.warn('⚠️  未配置AI API密钥');
-    console.warn('💡 请根据AI_PROVIDER配置相应的API密钥:');
-    console.warn('   - deepseek: DEEPSEEK_API_KEY');
-    console.warn('   - claude: CLAUDE_API_KEY');
-    console.warn('   - openai: OPENAI_API_KEY');
+    console.warn('💡 优先配置通用变量: AI_API_KEY / AI_BASE_URL / AI_MODEL / AI_PROVIDER_TYPE');
+    console.warn('💡 兼容旧变量: AIGOCODE_* / CLAUDE_* / OPENAI_*');
 }
 
 // 验证 Knowledge RAG 配置

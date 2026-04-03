@@ -326,7 +326,7 @@ class ErrorHandler {
         if (error.message?.includes('database') || error.message?.includes('postgres') || error.message?.includes('connection')) {
             type = ErrorType.DATABASE;
             severity = ErrorSeverity.HIGH;
-        } else if (error.message?.includes('AI') || error.message?.includes('api') || error.message?.includes('openai') || error.message?.includes('deepseek')) {
+        } else if (error.message?.includes('AI') || error.message?.includes('api') || error.message?.includes('openai') || error.message?.includes('model') || error.message?.includes('completion')) {
             type = ErrorType.AI_SERVICE;
             severity = ErrorSeverity.MEDIUM;
         } else if (error.message?.includes('network') || error.message?.includes('timeout') || error.message?.includes('fetch')) {
