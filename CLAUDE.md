@@ -120,3 +120,14 @@ Affirm/
 ├── migrations/    # 数据库迁移
 └── skills/        # OpenClaw Skill 模块
 ```
+
+## 配置约定
+
+当前项目配置链路固定为：
+
+`.env` -> `src/config.js` -> 只读 `config` 对象 -> 业务模块
+
+- `.env` / 进程环境变量是唯一配置输入源
+- 业务代码统一读取 `src/config.js` 导出的 `config`
+- 禁止重新引入运行时配置管理器
+- Notion Skill 配置由 `src/services/notion.js` 显式传参，不通过 env 桥接

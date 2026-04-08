@@ -1,190 +1,94 @@
-// Notion服务 - 基于OpenClaw Notion Skill的归档服务（修复版）
-const path = require('path');
 const config = require('../config');
+const NotionClient = require('../../skills/notion/client');
 
-/**
- * Notion服务（修复版）
- * 修复技能集成中的配置缓存和路径问题
- */
+function isMissingOrPlaceholder(value) {
+    return !value || String(value).includes('your_notion');
+}
+
 class NotionService {
     constructor() {
-        // 从项目配置读取Notion配置
         this.notionConfig = config.notion;
         this.client = null;
         this.isInitialized = false;
-        
-        console.log('🔧 Notion服务初始化...');
+
+        console.log('Initializing Notion service...');
     }
-    
-    /**
-     * 初始化Notion客户端（修复配置缓存问题）
-     */
+
+    buildSkillConfig() {
+        return {
+            apiKey: this.notionConfig.apiKey,
+            databaseId: this.notionConfig.skillDatabaseId || this.notionConfig.databaseId,
+            templatePageId: this.notionConfig.templatePageId || ''
+        };
+    }
+
+    validateConfig() {
+        if (isMissingOrPlaceholder(this.notionConfig.apiKey)) {
+            throw new Error('Notion API密钥未正确配置 (需要设置NOTION_API_KEY或NOTION_TOKEN)');
+        }
+
+        if (isMissingOrPlaceholder(this.notionConfig.skillDatabaseId || this.notionConfig.databaseId)) {
+            throw new Error('Notion数据库ID未配置 (需要设置NOTION_DATABASE_ID)');
+        }
+    }
+
     async initialize() {
         if (this.isInitialized && this.client) {
             return;
         }
-        
-        // 检查配置
-        if (!this.notionConfig.apiKey || this.notionConfig.apiKey.includes('your_notion')) {
-            throw new Error('Notion API密钥未正确配置 (需要设置NOTION_API_KEY或NOTION_TOKEN)');
-        }
-        
-        if (!this.notionConfig.skillDatabaseId || this.notionConfig.skillDatabaseId.includes('your_notion')) {
-            throw new Error('Notion数据库ID未配置 (需要设置NOTION_DATABASE_ID)');
-        }
-        
+
+        this.validateConfig();
+
         try {
-            console.log('🔧 初始化Notion Skill客户端...');
-            
-            // 关键修复：在加载技能模块前设置环境变量
-            process.env.NOTION_API_KEY = this.notionConfig.apiKey;
-            process.env.NOTION_DATABASE_ID = this.notionConfig.skillDatabaseId;
-            
-            // 清除技能模块缓存，确保读取最新环境变量
-            this._clearSkillModuleCache();
-            
-            // 动态加载NotionClient（避免缓存问题）
-            const NotionClient = this._loadNotionClient();
-            
-            // 创建NotionClient实例
-            this.client = new NotionClient();
-            
-            // 初始化客户端
+            console.log('Initializing Notion skill client...');
+
+            this.client = new NotionClient(this.buildSkillConfig());
             this.client.initialize();
-            
+
             this.isInitialized = true;
-            console.log('✅ Notion服务初始化完成');
+            console.log('Notion service initialized');
         } catch (error) {
-            console.error('❌ Notion服务初始化失败:', error.message);
-            
-            // 提供详细的错误诊断
-            if (error.message.includes('MODULE_NOT_FOUND')) {
-                console.error('🔍 模块找不到，检查技能文件路径:');
-                console.error(`   当前目录: ${__dirname}`);
-                console.error(`   技能路径: ${path.join(__dirname, '../../skills/notion')}`);
-                console.error('💡 建议: 确保skills/notion目录存在且包含client.js文件');
-            }
-            
+            console.error('Failed to initialize Notion service:', error.message);
+
             if (error.message.includes('未配置') || error.message.includes('your_notion')) {
-                console.error('🔍 配置检查:');
-                console.error(`   API密钥: ${this.notionConfig.apiKey ? '已设置' : '未设置'}`);
-                console.error(`   数据库ID: ${this.notionConfig.skillDatabaseId ? '已设置' : '未设置'}`);
-                console.error('💡 建议: 在.env文件中设置NOTION_API_KEY和NOTION_DATABASE_ID');
+                console.error('Configuration check:');
+                console.error(`   API key: ${this.notionConfig.apiKey ? 'configured' : 'missing'}`);
+                console.error(`   Database ID: ${this.notionConfig.skillDatabaseId ? 'configured' : 'missing'}`);
+                console.error('Tip: set NOTION_API_KEY and NOTION_DATABASE_ID in your env file');
             }
-            
+
             throw error;
         }
     }
-    
-    /**
-     * 清除技能模块缓存
-     * @private
-     */
-    _clearSkillModuleCache() {
-        try {
-            // 清除配置模块缓存
-            const configPath = require.resolve('../../skills/notion/config');
-            delete require.cache[configPath];
-            console.log('🧹 已清除技能配置缓存');
-        } catch (error) {
-            console.warn('⚠️  清除配置缓存失败:', error.message);
-        }
-        
-        try {
-            // 清除客户端模块缓存
-            const clientPath = require.resolve('../../skills/notion/client');
-            delete require.cache[clientPath];
-            console.log('🧹 已清除技能客户端缓存');
-        } catch (error) {
-            console.warn('⚠️  清除客户端缓存失败:', error.message);
-        }
-    }
-    
-    /**
-     * 动态加载NotionClient（避免模块缓存问题）
-     * @private
-     */
-    _loadNotionClient() {
-        try {
-            // 使用绝对路径确保正确加载
-            const clientPath = path.join(__dirname, '../../skills/notion/client.js');
-            
-            // 清除模块缓存
-            delete require.cache[require.resolve(clientPath)];
-            
-            // 加载模块
-            const NotionClient = require(clientPath);
-            
-            // 验证模块导出
-            if (typeof NotionClient !== 'function') {
-                throw new Error('NotionClient模块未正确导出类');
-            }
-            
-            console.log('📦 NotionClient模块加载成功');
-            return NotionClient;
-        } catch (error) {
-            console.error('❌ 加载NotionClient失败:', error.message);
-            console.error(`   尝试的路径: ${path.join(__dirname, '../../skills/notion/client.js')}`);
-            console.error(`   当前工作目录: ${process.cwd()}`);
-            
-            // 尝试备用路径
-            try {
-                console.log('🔄 尝试备用加载路径...');
-                const altPath = './skills/notion/client';
-                delete require.cache[require.resolve(altPath)];
-                const NotionClient = require(altPath);
-                console.log('✅ 通过备用路径加载成功');
-                return NotionClient;
-            } catch (altError) {
-                throw new Error(`无法加载NotionClient: ${error.message}, 备用路径也失败: ${altError.message}`);
-            }
-        }
-    }
-    
-    /**
-     * 归档每日消息到Notion（兼容原有接口）
-     * @param {string} userId - 用户UUID
-     * @param {string} username - 用户名（用于页面标题）
-     * @param {Array} messages - 消息列表
-     * @param {Date} date - 归档日期
-     * @returns {Promise<string>} 创建的Notion页面ID
-     */
+
     async archiveDailyMessages(userId, username, messages, date) {
-        // 确保初始化
         if (!this.isInitialized) {
             await this.initialize();
         }
-        
+
         if (!messages || messages.length === 0) {
-            console.log('📭 没有消息需要归档');
+            console.log('No messages to archive');
             return null;
         }
-        
-        console.log(`📦 开始归档 ${messages.length} 条消息到Notion...`);
-        
+
+        console.log(`Archiving ${messages.length} messages to Notion...`);
+
         try {
-            // 创建页面标题
-            const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD
-            const title = `💬 ${username} - ${dateStr} 对话归档`;
-            
-            // 格式化消息为Notion blocks
+            const dateStr = date.toISOString().split('T')[0];
+            const title = `Chat Archive - ${username} - ${dateStr}`;
             const content = this.formatMessagesToBlocks(messages, username);
-            
-            // 页面属性
+
             const properties = {
-                // 日期属性
                 Date: {
                     date: {
                         start: dateStr
                     }
                 },
-                // 状态属性
                 Status: {
                     select: {
                         name: '已归档'
                     }
                 },
-                // 用户属性
                 User: {
                     rich_text: [
                         {
@@ -194,11 +98,9 @@ class NotionService {
                         }
                     ]
                 },
-                // 消息数量
                 Count: {
                     number: messages.length
                 },
-                // 用户ID（用于搜索）
                 'User ID': {
                     rich_text: [
                         {
@@ -209,84 +111,73 @@ class NotionService {
                     ]
                 }
             };
-            
-            // 创建Notion页面
+
             const page = await this.client.createArchivePage(title, content, properties);
-            
-            console.log(`✅ 归档完成！页面ID: ${page.id}`);
+
+            console.log(`Archive completed: ${page.id}`);
             return page.id;
-            
         } catch (error) {
-            console.error('❌ Notion归档失败:', error.message);
-            
-            // 检查是否为配置错误
-            if (error.message.includes('API密钥') || 
-                error.message.includes('未配置') || 
-                error.message.includes('auth') ||
-                error.message.includes('permission')) {
+            console.error('Notion archive failed:', error.message);
+
+            if (
+                error.message.includes('API密钥')
+                || error.message.includes('未配置')
+                || error.message.includes('auth')
+                || error.message.includes('permission')
+            ) {
                 throw new Error(`Notion配置错误: ${error.message}. 请检查NOTION_API_KEY和NOTION_DATABASE_ID配置。`);
             }
-            
-            // 检查是否为数据库权限错误
+
             if (error.message.includes('database') || error.message.includes('parent')) {
                 throw new Error(`数据库权限错误: ${error.message}. 请确保数据库已分享给集成。`);
             }
-            
+
             throw error;
         }
     }
-    
-    /**
-     * 格式化消息为Notion blocks
-     * @param {Array} messages - 消息列表
-     * @param {string} username - 用户名
-     * @returns {Array} Notion blocks数组
-     */
+
     formatMessagesToBlocks(messages, username) {
-        const blocks = [];
-        
-        // 添加标题
-        blocks.push({
-            object: 'block',
-            type: 'heading_2',
-            heading_2: {
-                rich_text: [
-                    {
-                        text: {
-                            content: `📊 对话归档 - ${username}`
+        const blocks = [
+            {
+                object: 'block',
+                type: 'heading_2',
+                heading_2: {
+                    rich_text: [
+                        {
+                            text: {
+                                content: `对话归档 - ${username}`
+                            }
                         }
-                    }
-                ]
-            }
-        });
-        
-        // 添加摘要信息
-        blocks.push({
-            object: 'block',
-            type: 'paragraph',
-            paragraph: {
-                rich_text: [
-                    {
-                        text: {
-                            content: `总计 ${messages.length} 条消息，按时间顺序排列。`
+                    ]
+                }
+            },
+            {
+                object: 'block',
+                type: 'paragraph',
+                paragraph: {
+                    rich_text: [
+                        {
+                            text: {
+                                content: `共 ${messages.length} 条消息，按时间顺序排列。`
+                            }
                         }
-                    }
-                ]
+                    ]
+                }
+            },
+            {
+                object: 'block',
+                type: 'divider',
+                divider: {}
             }
-        });
-        
-        blocks.push({
-            object: 'block',
-            type: 'divider',
-            divider: {}
-        });
-        
-        // 添加每条消息
-        messages.forEach((msg, index) => {
-            // 消息头：角色和时间
-            const role = msg.role === 'user' ? '👤 用户' : '🤖 AI助手';
-            const timeStr = msg.timestamp ? new Date(msg.timestamp).toLocaleString('zh-CN') : '未知时间';
-            
+        ];
+
+        messages.forEach((message, index) => {
+            const role = message.role === 'user' ? '用户' : 'AI助手';
+            const color = message.role === 'user' ? 'blue' : 'green';
+            const timestamp = message.timestamp
+                ? new Date(message.timestamp).toLocaleString('zh-CN')
+                : '未知时间';
+
             blocks.push({
                 object: 'block',
                 type: 'heading_3',
@@ -294,18 +185,17 @@ class NotionService {
                     rich_text: [
                         {
                             text: {
-                                content: `${role} - ${timeStr}`
+                                content: `${role} - ${timestamp}`
                             },
                             annotations: {
                                 bold: true,
-                                color: msg.role === 'user' ? 'blue' : 'green'
+                                color
                             }
                         }
                     ]
                 }
             });
-            
-            // 消息内容
+
             blocks.push({
                 object: 'block',
                 type: 'paragraph',
@@ -313,14 +203,13 @@ class NotionService {
                     rich_text: [
                         {
                             text: {
-                                content: msg.content || '（无内容）'
+                                content: message.content || '(无内容)'
                             }
                         }
                     ]
                 }
             });
-            
-            // 如果不是最后一条消息，添加分隔线
+
             if (index < messages.length - 1) {
                 blocks.push({
                     object: 'block',
@@ -329,14 +218,13 @@ class NotionService {
                 });
             }
         });
-        
-        // 添加页脚
+
         blocks.push({
             object: 'block',
             type: 'divider',
             divider: {}
         });
-        
+
         blocks.push({
             object: 'block',
             type: 'paragraph',
@@ -358,19 +246,14 @@ class NotionService {
                 ]
             }
         });
-        
+
         return blocks;
     }
-    
-    /**
-     * 停止服务（兼容原有接口）
-     */
+
     async stop() {
-        // NotionClient没有显式的停止方法
-        // 清理引用
         this.client = null;
         this.isInitialized = false;
-        console.log('🧹 Notion服务已停止');
+        console.log('Notion service stopped');
     }
 }
 

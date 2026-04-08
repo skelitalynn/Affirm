@@ -8,7 +8,6 @@ const AIService = require('./ai');
 const NotionService = require('./notion');
 const knowledgeVectorStore = require('./rag/knowledge-vector-store');
 const config = require('../config');
-const configManager = require('../config/manager'); // Day 3+ 配置管理
 const {
     errorHandler,
     DatabaseError,
@@ -28,7 +27,6 @@ class TelegramService {
         this.aiService = null;
         this.notionService = null; // Day 4: Notion归档服务
         this.isRunning = false;
-        this.configManager = configManager; // Day 3+ 配置管理
         this.webhookServer = null;   // Phase 2: Webhook HTTP 服务器
         this.isWebhookMode = false;  // Phase 2: 当前接入模式标志
     }
@@ -36,7 +34,7 @@ class TelegramService {
     async start() {
         console.log('🤖 启动Telegram机器人...');
         
-        const token = this.configManager.get('telegram.botToken');
+        const token = config.telegram.botToken;
         if (!token) {
             throw new Error('Telegram机器人令牌未配置 (TELEGRAM_BOT_TOKEN)');
         }
@@ -150,7 +148,7 @@ class TelegramService {
         console.log(`🌐 Webhook 服务器已启动，监听端口 ${port}`);
 
         // 向 Telegram 注册 Webhook URL
-        const webhookBaseUrl = configManager.get('telegram.webhookUrl') || '';
+        const webhookBaseUrl = config.telegram.webhookUrl || '';
         if (webhookBaseUrl) {
             const fullUrl = `${webhookBaseUrl.replace(/\/$/, '')}${webhookPath}`;
             await this.bot.setWebHook(fullUrl, {
@@ -392,7 +390,7 @@ class TelegramService {
             console.log(`💾 用户消息已保存 [ID: ${savedUserMessage.id}]`);
 
             // 3. 获取最近消息作为上下文（使用配置）
-            const contextLimit = this.configManager.get('telegram.contextLimit', 20);
+            const contextLimit = config.telegram.contextLimit;
             const recentMessages = await Message.getRecentMessages(user.id, contextLimit);
             console.log(`📊 获取到最近 ${recentMessages.length} 条消息作为上下文（限制: ${contextLimit}）`);
 
@@ -566,7 +564,7 @@ class TelegramService {
     async handleHelpCommand(msg) {
         const chatId = msg.chat.id;
         
-        const contextLimit = this.configManager.get('telegram.contextLimit', 20);
+        const contextLimit = config.telegram.contextLimit;
         const helpMessage = `📚 <b>Affirm 显化导师 - 帮助指南</b>\n\n<b>可用命令：</b>\n/start - 开始使用机器人\n/help - 显示此帮助信息\n/history - 查看最近对话历史\n/clear - 清除当前对话历史\n/archive_now - 归档今日对话到Notion\n\n<b>使用方法：</b>\n直接发送消息给我，我会热情地回复你。\n我使用最近${contextLimit}条对话作为上下文，让你有连贯的体验。\n\n<b>功能：</b>\n• 记录你的想法和目标\n• 提供积极的肯定语\n• 协助思维重塑\n• 提供个性化的建议\n• 对话归档到Notion（需配置）\n\n<b>注意事项：</b>\n• 所有对话都会被安全存储\n• 你可以随时清除历史记录\n• AI服务可能偶尔不可用\n\n有问题随时联系！✨`;
         
         try {
@@ -598,7 +596,7 @@ class TelegramService {
             });
             
             // 获取最近消息（使用配置）
-            const historyLimit = this.configManager.get('telegram.historyLimit', 10);
+            const historyLimit = config.telegram.historyLimit;
             const recentMessages = await Message.getRecentMessages(user.id, historyLimit);
             
             if (recentMessages.length === 0) {
@@ -742,7 +740,7 @@ class TelegramService {
                     userId,
                     username,
                     dailyMessageCount: dailyMessages.length,
-                    notionConfigPresent: !!process.env.NOTION_TOKEN && process.env.NOTION_TOKEN !== 'your_notion_integration_token',
+                    notionConfigPresent: Boolean(config.notion.apiKey && !config.notion.apiKey.includes('your_notion')),
                     function: 'notionService.archiveDailyMessages'
                 };
                 
@@ -773,7 +771,7 @@ class TelegramService {
                 username,
                 command: '/archive_now',
                 function: 'handleArchiveCommand',
-                hasNotionConfig: !!process.env.NOTION_TOKEN && process.env.NOTION_TOKEN !== 'your_notion_integration_token'
+                hasNotionConfig: Boolean(config.notion.apiKey && !config.notion.apiKey.includes('your_notion'))
             };
             
             const errorResult = handleError(error, context);

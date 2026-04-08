@@ -1,6 +1,7 @@
 // 健康检查模块
 const { db } = require('./db/connection');
 const knowledgeVectorStore = require('./services/rag/knowledge-vector-store');
+const config = require('./config');
 
 async function healthCheck() {
     const checks = [];
@@ -40,7 +41,7 @@ async function healthCheck() {
         details: {
             uptime: process.uptime(),
             nodeVersion: process.version,
-            env: process.env.NODE_ENV
+            env: config.app.nodeEnv
         }
     });
 

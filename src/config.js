@@ -1,6 +1,20 @@
 // 项目配置文件
 require('dotenv').config();
 
+function deepFreeze(target) {
+    if (!target || typeof target !== 'object' || Object.isFrozen(target)) {
+        return target;
+    }
+
+    Object.freeze(target);
+
+    Object.getOwnPropertyNames(target).forEach((key) => {
+        deepFreeze(target[key]);
+    });
+
+    return target;
+}
+
 const config = {
     // 数据库配置
     database: {
@@ -28,6 +42,7 @@ const config = {
         token: process.env.NOTION_TOKEN,
         parentPageId: process.env.NOTION_PARENT_PAGE_ID,
         databaseId: process.env.NOTION_DATABASE_ID,
+        templatePageId: process.env.NOTION_TEMPLATE_PAGE_ID || '',
         // 新变量名（符合OpenClaw Notion Skill规范）
         apiKey: process.env.NOTION_API_KEY || process.env.NOTION_TOKEN,
         skillDatabaseId: process.env.NOTION_DATABASE_ID
@@ -35,15 +50,18 @@ const config = {
     
     // AI模型配置 - 支持多提供商，无降级逻辑
     ai: (() => {
-        const provider = (process.env.AI_PROVIDER || 'deepseek').toLowerCase();
+        const supportedProviders = ['claude', 'openai'];
+        const requestedProvider = (process.env.AI_PROVIDER || '').trim().toLowerCase();
+        const provider = supportedProviders.includes(requestedProvider)
+            ? requestedProvider
+            : (
+                process.env.CLAUDE_API_KEY ? 'claude'
+                    : process.env.OPENAI_API_KEY ? 'openai'
+                        : 'openai'
+            );
         
         // 提供商配置映射
         const providerConfigs = {
-            deepseek: {
-                apiKey: process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY,
-                baseURL: process.env.DEEPSEEK_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.deepseek.com/v1',
-                defaultModel: 'deepseek-reasoner'
-            },
             claude: {
                 apiKey: process.env.CLAUDE_API_KEY || process.env.OPENAI_API_KEY,
                 baseURL: process.env.CLAUDE_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.aigocode.com/v1',
@@ -57,12 +75,12 @@ const config = {
             // 未来可以添加更多提供商，如gemini
         };
         
+        if (requestedProvider && !supportedProviders.includes(requestedProvider)) {
+            console.warn(`⚠️  不支持的AI提供商: ${requestedProvider}，将自动切换到 ${provider}`);
+        }
+
         // 获取当前提供商的配置
         const providerConfig = providerConfigs[provider];
-        if (!providerConfig) {
-            console.warn(`⚠️  不支持的AI提供商: ${provider}，默认使用deepseek`);
-            return providerConfigs.deepseek;
-        }
         
         // 确定模型名称：优先使用AI_MODEL，然后使用provider特定的MODEL，最后使用默认
         let model;
@@ -70,6 +88,8 @@ const config = {
             model = process.env.AI_MODEL;
         } else if (provider === 'claude' && process.env.CLAUDE_MODEL) {
             model = process.env.CLAUDE_MODEL;
+        } else if (provider === 'openai' && process.env.OPENAI_MODEL) {
+            model = process.env.OPENAI_MODEL;
         } else if (process.env.MODEL_NAME) {
             model = process.env.MODEL_NAME; // 向后兼容
         } else {
@@ -93,7 +113,9 @@ const config = {
         apiKey: process.env.EMBEDDING_API_KEY,
         baseURL: process.env.EMBEDDING_BASE_URL || 'https://api.openai.com/v1',
         model: process.env.EMBEDDING_MODEL || 'text-embedding-3-small',
-        dimensions: parseInt(process.env.EMBEDDING_DIMENSIONS) || 768
+        dimensions: parseInt(process.env.EMBEDDING_DIMENSIONS) || 768,
+        sharedApiKey: process.env.OPENAI_API_KEY || '',
+        sharedBaseURL: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1'
     },
 
 
@@ -110,6 +132,11 @@ const config = {
         enabled: process.env.WEBHOOK_ENABLED === 'true',
         port: parseInt(process.env.WEBHOOK_PORT) || 3002,
         secretToken: process.env.WEBHOOK_SECRET_TOKEN || ''
+    },
+
+    admin: {
+        port: parseInt(process.env.ADMIN_PORT) || 3001,
+        password: process.env.ADMIN_PASSWORD || ''
     },
 
     // 应用配置
@@ -141,7 +168,6 @@ const aiConfig = config.ai;
 if (!aiConfig.apiKey) {
     console.warn('⚠️  未配置AI API密钥');
     console.warn('💡 请根据AI_PROVIDER配置相应的API密钥:');
-    console.warn('   - deepseek: DEEPSEEK_API_KEY');
     console.warn('   - claude: CLAUDE_API_KEY');
     console.warn('   - openai: OPENAI_API_KEY');
 }
@@ -151,4 +177,4 @@ if (!config.embedding.apiKey) {
     console.log('ℹ️ 未配置 EMBEDDING_API_KEY，knowledge RAG 将自动回退到本地 deterministic 向量');
 }
 
-module.exports = config;
+module.exports = deepFreeze(config);

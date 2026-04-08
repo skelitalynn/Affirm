@@ -53,6 +53,7 @@ user message
 - `messages` 语义记忆当前停用
 - 所以 Telegram 主链路里真正生效的检索只有 `Knowledge.semanticSearch()`
 - 如果你要恢复 `messages` 语义记忆，这会是一个独立任务，不是改一点 prompt 就能恢复
+- Notion 归档由 `src/services/notion.js` 从 `src/config.js` 读取配置后显式传给 `skills/notion/client.js`
 
 ## 6. 最小验证方式
 

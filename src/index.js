@@ -19,7 +19,7 @@ async function initialize() {
         console.log(`   Token预览: ${config.telegram.botToken.substring(0, 10)}...${config.telegram.botToken.substring(config.telegram.botToken.length - 4)}`);
     }
     console.log('   AI API Key:', config.ai.apiKey ? '✅ 已配置' : '❌ 未配置');
-    console.log('   AI Provider:', config.ai.provider || 'deepseek');
+    console.log('   AI Provider:', config.ai.provider);
     console.log('   Database URL:', config.database.url ? '✅ 已配置' : '❌ 未配置');
     
     try {

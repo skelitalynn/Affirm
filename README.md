@@ -14,6 +14,12 @@
 - 项目概览：[docs/project/项目概述.md](docs/project/项目概述.md)
 - 开发总流程：[docs/development/00-开发总流程.md](docs/development/00-开发总流程.md)
 
+当前配置模型也已经固定：
+
+- `.env` 是唯一配置输入源
+- `src/config.js` 是唯一配置代码入口
+- 主业务模块统一读取只读 `config`
+
 ## 快速开始
 
 ```bash

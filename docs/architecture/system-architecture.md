@@ -1,6 +1,6 @@
 # 系统架构
 
-**更新日期**：2026-04-04
+**更新日期**：2026-04-07
 
 本文档只描述当前还有效的系统结构，不再保留历史升级快照。
 
@@ -17,6 +17,7 @@
 ```text
 Telegram
   -> src/index.js
+  -> src/config.js
   -> TelegramService
      -> MessageQueue
      -> AIService
@@ -110,12 +111,29 @@ Database
 - `messages` 语义记忆：停用
 - knowledge embeddings：可能处于 deterministic fallback
 
-## 7. 目录责任
+## 7. 配置架构
+
+```text
+.env / process env
+  -> src/config.js
+  -> frozen config singleton
+  -> services / models / admin
+```
+
+关键事实：
+
+- `src/config.js` 是当前唯一配置入口
+- 配置在启动时完成解析并以只读方式使用
+- 运行时 `configManager` 已移除，不再存在双配置源
+- `src/services/notion.js` 会将 Notion 配置显式传给 `skills/notion/client.js`
+- `skills/notion/config.js` 仅作为兼容默认值层，不是主应用配置真相源
+
+## 8. 目录责任
 
 ```text
 src/
 ├── admin/      后台路由、页面、认证
-├── config/     配置管理
+├── config.js   唯一配置入口（只读）
 ├── db/         数据库连接
 ├── models/     数据读写契约
 ├── services/   业务服务

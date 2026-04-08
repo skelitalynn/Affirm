@@ -138,7 +138,7 @@ Affirm/
 │   ├── services/  # telegram.js、ai.js、embedding.js、notion.js
 │   ├── models/    # user.js、message.js、knowledge.js
 │   ├── utils/     # message-queue.js、error-handler.js
-│   ├── config/    # manager.js（配置管理器）
+│   ├── config.js  # 唯一配置入口（只读）
 │   ├── admin/     # Express 管理后台
 │   └── db/        # 数据库连接
 ├── docs/          # 所有文档（按子目录分类）
@@ -155,7 +155,7 @@ Affirm/
 
 | 文件 | 说明 |
 |------|------|
-| `src/config.js` | 多 Provider AI 配置、Redis、Webhook 配置 |
+| `src/config.js` | 项目唯一配置入口：从 `.env` 解析并导出只读 `config` |
 | `src/services/telegram.js` | Bot 主逻辑，支持 Polling / Webhook 双模式 |
 | `src/services/ai.js` | AIService，OpenAI 兼容 SDK |
 | `src/services/embedding.js` | 向量嵌入（独立 Provider，支持 RAG） |
@@ -163,13 +163,24 @@ Affirm/
 | `src/utils/error-handler.js` | 统一错误处理 |
 | `src/admin/server.js` | Express 管理后台（port 3001） |
 
+### 配置约定
+
+当前项目配置链路固定为：
+
+`.env` -> `src/config.js` -> 只读 `config` 对象 -> 业务模块
+
+- `.env` / 进程环境变量是唯一配置输入源
+- 业务代码统一读取 `src/config.js` 导出的 `config`
+- 禁止重新引入运行时配置管理器
+- Notion Skill 配置由 `src/services/notion.js` 显式传参，不通过 env 桥接
+
 ### 环境变量关键项
 
 ```
-AI_PROVIDER=deepseek          # 主 LLM Provider
-EMBEDDING_API_KEY=...         # 独立 Embedding Key（必填，否则 RAG 不可用）
+AI_PROVIDER=claude            # 主 LLM Provider（claude / openai）
+EMBEDDING_API_KEY=...         # 可选；未配置时 RAG 会退回 deterministic fallback
 WEBHOOK_ENABLED=false         # true 启用 Webhook 模式
-REDIS_HOST=localhost          # BullMQ 依赖
+REDIS_URL=redis://localhost:6379
 TELEGRAM_BOT_TOKEN=...        # 必填
 DB_URL=...                    # 必填
 ```

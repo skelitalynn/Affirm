@@ -1,6 +1,6 @@
 # Affirm 文档入口
 
-**更新日期**：2026-04-04
+**更新日期**：2026-04-07
 
 这套文档只保留两类内容：
 
@@ -33,8 +33,10 @@
 
 - 业务入口是 `src/index.js`
 - 后台入口是 `src/admin/server.js`
+- 配置入口只有 `src/config.js`，配置输入源只有 `.env`
 - `knowledge RAG` 走 `src/services/rag/knowledge-vector-store.js`
 - `messages` 语义记忆当前停用，见 `src/models/message.js`
+- Notion Skill 由 `src/services/notion.js` 显式传参，不再通过 env 桥接
 - 数据库结构来源于 `scripts/database/schemas/init.sql` 和 `migrations/*.sql`
 
 ## 文档结构

@@ -1,10 +1,21 @@
 // Notion API客户端
 const { Client } = require('@notionhq/client');
-const config = require('./config');
+const defaultConfig = require('./config');
+
+function buildNotionConfig(overrides = {}) {
+    return {
+        ...defaultConfig,
+        ...overrides,
+        archiveConfig: {
+            ...(defaultConfig.archiveConfig || {}),
+            ...(overrides.archiveConfig || {})
+        }
+    };
+}
 
 class NotionClient {
-    constructor() {
-        this.config = config;
+    constructor(configOverrides = {}) {
+        this.config = buildNotionConfig(configOverrides);
         this.client = null;
         this.initialized = false;
     }

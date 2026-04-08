@@ -6,8 +6,9 @@
  */
 const basicAuth = require('basic-auth');
 const crypto = require('crypto');
+const config = require('../../config');
 
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+const ADMIN_PASSWORD = config.admin.password;
 
 if (!ADMIN_PASSWORD) {
     console.warn('⚠️  ADMIN_PASSWORD 未设置，管理后台将拒绝所有访问请求');

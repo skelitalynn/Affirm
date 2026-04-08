@@ -1,11 +1,23 @@
 // 每日归档管理器
 const NotionClient = require('./client');
-const config = require('./config');
+const defaultConfig = require('./config');
+
+function buildNotionConfig(overrides = {}) {
+    return {
+        ...defaultConfig,
+        ...overrides,
+        archiveConfig: {
+            ...(defaultConfig.archiveConfig || {}),
+            ...(overrides.archiveConfig || {})
+        }
+    };
+}
 
 class DailyArchiver {
-    constructor() {
-        this.config = config.archiveConfig;
-        this.notion = new NotionClient();
+    constructor(configOverrides = {}) {
+        const notionConfig = buildNotionConfig(configOverrides);
+        this.config = notionConfig.archiveConfig;
+        this.notion = new NotionClient(notionConfig);
         this.archives = []; // 当日归档记录
     }
 
