@@ -13,9 +13,13 @@ const { healthCheck } = require('../health');
 const Profile = require('../models/profile');
 const Knowledge = require('../models/knowledge');
 const Message = require('../models/message');
+const SyncJob = require('../models/sync-job');
+const ragProvider = require('../services/rag/provider');
+const { messageQueue } = require('../utils/message-queue');
 const authMiddleware = require('./middleware/auth');
 const profilesRouter = require('./routes/profiles');
 const knowledgeRouter = require('./routes/knowledge');
+const syncJobsRouter = require('./routes/sync-jobs');
 
 const app = express();
 const PORT = config.admin.port;
@@ -96,16 +100,42 @@ async function getSafeCount(model, fallback = 0) {
     }
 }
 
+async function getSafeJobSummary() {
+    try {
+        return await SyncJob.summarize();
+    } catch (error) {
+        console.error('同步任务摘要获取失败:', error.message);
+        return {
+            total: 0,
+            byStatus: {
+                pending: 0,
+                processing: 0,
+                completed: 0,
+                failed: 0
+            },
+            recent: []
+        };
+    }
+}
+
 app.use('/admin', authMiddleware);
 app.use('/admin', csrfProtection);
 
 app.get('/admin', async (req, res) => {
     try {
-        const [profilesCount, knowledgeCount, messagesCount] = await Promise.all([
+        const [profilesCount, knowledgeCount, messagesCount, syncJobSummary, ragStatus] = await Promise.all([
             getSafeCount(Profile),
             getSafeCount(Knowledge),
-            getSafeCount(Message)
+            getSafeCount(Message),
+            getSafeJobSummary(),
+            ragProvider.getStatus().catch(() => ({
+                enabled: false,
+                healthy: false,
+                configured: false,
+                message: 'Haystack 状态获取失败'
+            }))
         ]);
+        const queueStats = messageQueue.getStats();
 
         res.render('dashboard', {
             title: 'Affirm后台管理',
@@ -114,9 +144,20 @@ app.get('/admin', async (req, res) => {
             stats: {
                 profilesCount,
                 knowledgeCount,
-                messagesCount
+                messagesCount,
+                syncJobsCount: syncJobSummary.total,
+                queueMode: queueStats.mode || 'uninitialized',
+                ragStatus: ragStatus.enabled ? 'enabled' : (ragStatus.configured ? 'degraded' : 'not_configured')
             },
-            recentActivity: []
+            systemOverview: {
+                queueStats,
+                ragStatus,
+                syncJobSummary
+            },
+            recentActivity: (syncJobSummary.recent || []).map((job) => ({
+                time: new Date(job.created_at).toLocaleString('zh-CN'),
+                text: `${job.job_type} - ${job.status}`
+            }))
         });
     } catch (error) {
         console.error('仪表盘渲染失败:', error);
@@ -130,6 +171,7 @@ app.get('/admin', async (req, res) => {
 
 app.use('/admin/profiles', profilesRouter);
 app.use('/admin/knowledge', knowledgeRouter);
+app.use('/admin/sync-jobs', syncJobsRouter);
 
 app.get('/health', async (req, res) => {
     const result = await healthCheck();

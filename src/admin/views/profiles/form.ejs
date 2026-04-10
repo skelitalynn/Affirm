@@ -32,8 +32,9 @@
     </div>
 
     <div class="form-group">
-        <label for="preferences">偏好（preferences，JSON）</label>
+        <label for="preferences">长期记忆（preferences，JSON）</label>
         <textarea id="preferences" name="preferences" class="form-control"><%= preferencesValue %></textarea>
+        <small>闭环 v1 中，这里承载结构化长期记忆，例如 `summary`、`facts`、`communication_preferences`、`open_loops`。</small>
     </div>
 
     <div class="action-bar">

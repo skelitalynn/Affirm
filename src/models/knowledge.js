@@ -1,7 +1,7 @@
 // 知识片段数据模型
 const { randomUUID } = require('crypto');
 const { db } = require('../db/connection');
-const knowledgeVectorStore = require('../services/rag/knowledge-vector-store');
+const ragProvider = require('../services/rag/provider');
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -30,7 +30,226 @@ function mapRowsById(rows = []) {
     return new Map(rows.map((row) => [row.id, row]));
 }
 
+function truncateMessage(message, maxLength = 240) {
+    const normalized = String(message || '').trim();
+    if (!normalized) {
+        return '';
+    }
+
+    return normalized.length > maxLength
+        ? `${normalized.slice(0, maxLength - 3)}...`
+        : normalized;
+}
+
 class Knowledge {
+    static sanitizeMetadata(metadata = {}) {
+        if (!isPlainObject(metadata)) {
+            return {};
+        }
+
+        const sanitized = { ...metadata };
+        delete sanitized.source;
+        delete sanitized.user_id;
+        delete sanitized.scope;
+
+        return sanitized;
+    }
+
+    static buildSyncState(status = 'pending', errorMessage = '') {
+        const now = new Date().toISOString();
+        const normalizedStatus = String(status || 'pending').trim() || 'pending';
+        const normalizedError = truncateMessage(errorMessage);
+        const syncState = {
+            provider: 'haystack',
+            status: normalizedStatus,
+            last_attempt_at: now
+        };
+
+        if (normalizedStatus === 'synced') {
+            syncState.last_synced_at = now;
+        }
+
+        if (normalizedError) {
+            syncState.last_error = normalizedError;
+        }
+
+        return syncState;
+    }
+
+    static buildMetadata({ user_id = null, source = 'user_input', metadata = {} } = {}) {
+        const sanitized = Knowledge.sanitizeMetadata(metadata);
+
+        return {
+            ...sanitized,
+            source: source || 'user_input',
+            ...(user_id ? { user_id } : {}),
+            scope: user_id ? 'user' : 'global'
+        };
+    }
+
+    static buildStoredMetadata({ user_id = null, source = 'user_input', metadata = {}, syncStatus = 'pending', syncError = '' } = {}) {
+        const sanitized = Knowledge.sanitizeMetadata(metadata);
+
+        return Knowledge.buildMetadata({
+            user_id,
+            source,
+            metadata: {
+                ...sanitized,
+                rag_sync: Knowledge.buildSyncState(syncStatus, syncError)
+            }
+        });
+    }
+
+    static getSyncInfo(row) {
+        if (!row || !isPlainObject(row.metadata) || !isPlainObject(row.metadata.rag_sync)) {
+            return {
+                status: 'pending',
+                message: '等待同步到 Haystack'
+            };
+        }
+
+        const syncInfo = row.metadata.rag_sync;
+        return {
+            status: syncInfo.status || 'pending',
+            message: syncInfo.last_error || ''
+        };
+    }
+
+    static toRagDocument(row) {
+        if (!row) {
+            return null;
+        }
+
+        const customMetadata = Knowledge.sanitizeMetadata(row.metadata);
+        delete customMetadata.rag_sync;
+
+        return {
+            id: row.id,
+            content: String(row.content || ''),
+            metadata: {
+                ...customMetadata,
+                chunk_id: row.id,
+                document_id: row.id,
+                source: row.source || 'user_input',
+                scope: row.user_id ? 'user' : 'global',
+                ...(row.user_id ? { user_id: row.user_id } : {}),
+                ...(row.created_at ? { created_at: new Date(row.created_at).toISOString() } : {})
+            }
+        };
+    }
+
+    static async updateSyncMetadata(row, syncStatus, syncError = '') {
+        if (!row) {
+            return null;
+        }
+
+        const metadata = Knowledge.buildStoredMetadata({
+            user_id: row.user_id,
+            source: row.source,
+            metadata: row.metadata,
+            syncStatus,
+            syncError
+        });
+
+        const result = await db.query(`
+            UPDATE knowledge_chunks
+            SET user_id = $1,
+                source = $2,
+                metadata = $3::jsonb
+            WHERE id = $4
+            RETURNING *
+        `, [
+            row.user_id,
+            row.source,
+            JSON.stringify(metadata),
+            row.id
+        ]);
+
+        return result.rows[0] || row;
+    }
+
+    static async syncRowsToRag(rows = []) {
+        if (!Array.isArray(rows) || rows.length === 0) {
+            return {
+                syncedRows: [],
+                pendingRows: [],
+                failedRows: [],
+                errorMessage: ''
+            };
+        }
+
+        if (!ragProvider.isConfigured()) {
+            const pendingRows = [];
+            for (const row of rows) {
+                pendingRows.push(await Knowledge.updateSyncMetadata(row, 'pending', 'Haystack 未配置'));
+            }
+
+            return {
+                syncedRows: [],
+                pendingRows,
+                failedRows: [],
+                errorMessage: 'Haystack 未配置'
+            };
+        }
+
+        try {
+            const documents = rows
+                .map((row) => Knowledge.toRagDocument(row))
+                .filter(Boolean);
+
+            await ragProvider.upsertKnowledge(documents);
+
+            const syncedRows = [];
+            for (const row of rows) {
+                syncedRows.push(await Knowledge.updateSyncMetadata(row, 'synced'));
+            }
+
+            return {
+                syncedRows,
+                pendingRows: [],
+                failedRows: [],
+                errorMessage: ''
+            };
+        } catch (error) {
+            const failedRows = [];
+            for (const row of rows) {
+                failedRows.push(await Knowledge.updateSyncMetadata(row, 'failed', error.message));
+            }
+
+            return {
+                syncedRows: [],
+                pendingRows: [],
+                failedRows,
+                errorMessage: error.message
+            };
+        }
+    }
+
+    static async insertRow(knowledgeData) {
+        const id = knowledgeData.id || randomUUID();
+        const metadata = Knowledge.buildStoredMetadata({
+            user_id: knowledgeData.user_id,
+            source: knowledgeData.source,
+            metadata: knowledgeData.metadata,
+            syncStatus: 'pending',
+            syncError: ragProvider.isConfigured() ? '' : 'Haystack 未配置'
+        });
+
+        const result = await db.query(`
+            INSERT INTO knowledge_chunks (id, user_id, content, source, metadata)
+            VALUES ($1, $2, $3, $4, $5::jsonb)
+            RETURNING *
+        `, [
+            id,
+            knowledgeData.user_id,
+            knowledgeData.content,
+            knowledgeData.source,
+            JSON.stringify(metadata)
+        ]);
+
+        return result.rows[0];
+    }
+
     static async findByIds(ids = []) {
         if (!Array.isArray(ids) || ids.length === 0) {
             return [];
@@ -47,7 +266,7 @@ class Knowledge {
     }
 
     /**
-     * 创建知识片段（通过 LangChain PGVectorStore 写入）
+     * 创建知识片段（落库后同步到 Haystack）
      * @param {Object} knowledgeData - 知识数据
      * @returns {Promise<Object>} 创建的知识片段
      */
@@ -58,19 +277,13 @@ class Knowledge {
             throw new Error('知识内容不能为空');
         }
 
-        const id = randomUUID();
+        const created = await Knowledge.insertRow(normalized);
+        const syncResult = await Knowledge.syncRowsToRag([created]);
 
-        await knowledgeVectorStore.addKnowledge({
-            id,
-            ...normalized
-        });
-
-        const created = await this.findById(id);
-        if (!created) {
-            throw new Error('知识片段写入后读取失败');
-        }
-
-        return created;
+        return syncResult.syncedRows[0]
+            || syncResult.pendingRows[0]
+            || syncResult.failedRows[0]
+            || created;
     }
 
     /**
@@ -83,8 +296,7 @@ class Knowledge {
             throw new Error('知识数据数组不能为空');
         }
 
-        const pendingItems = [];
-        const successfulItems = [];
+        const normalizedItems = [];
         const failedItems = [];
 
         for (const [index, knowledgeData] of knowledgeArray.entries()) {
@@ -94,8 +306,7 @@ class Knowledge {
                     throw new Error('知识内容不能为空');
                 }
 
-                pendingItems.push({
-                    id: randomUUID(),
+                normalizedItems.push({
                     index,
                     ...normalized
                 });
@@ -108,44 +319,49 @@ class Knowledge {
             }
         }
 
-        if (pendingItems.length > 0) {
+        const createdRows = [];
+        const rowIndexMap = new Map();
+        for (const item of normalizedItems) {
             try {
-                await knowledgeVectorStore.addKnowledgeBatch(pendingItems);
-                const createdRows = await this.findByIds(pendingItems.map((item) => item.id));
-                successfulItems.push(...createdRows);
-            } catch (batchError) {
-                console.error('⚠️ LangChain 批量写入失败，降级为逐条写入:', batchError.message);
-
-                for (const item of pendingItems) {
-                    try {
-                        await knowledgeVectorStore.addKnowledge(item);
-                        const created = await this.findById(item.id);
-                        if (!created) {
-                            throw new Error('知识片段写入后读取失败');
-                        }
-                        successfulItems.push(created);
-                    } catch (error) {
-                        failedItems.push({
-                            index: item.index,
-                            source: item.source || null,
-                            error: error.message
-                        });
-                    }
-                }
+                const createdRow = await Knowledge.insertRow(item);
+                createdRows.push(createdRow);
+                rowIndexMap.set(createdRow.id, item.index);
+            } catch (error) {
+                failedItems.push({
+                    index: item.index,
+                    source: item.source || null,
+                    error: error.message
+                });
             }
+        }
+
+        const syncResult = await Knowledge.syncRowsToRag(createdRows);
+        const syncedRows = syncResult.syncedRows;
+        const pendingRows = syncResult.pendingRows;
+
+        if (syncResult.failedRows.length > 0) {
+            syncResult.failedRows.forEach((row) => {
+                failedItems.push({
+                    index: rowIndexMap.get(row.id) ?? null,
+                    source: row.source || null,
+                    error: syncResult.errorMessage || '同步到 Haystack 失败'
+                });
+            });
         }
 
         if (options && options.detailed === true) {
             return {
                 total: knowledgeArray.length,
-                successCount: successfulItems.length,
+                successCount: syncedRows.length,
+                pendingCount: pendingRows.length,
                 failureCount: failedItems.length,
-                successfulItems,
+                successfulItems: syncedRows,
+                pendingItems: pendingRows,
                 failedItems
             };
         }
 
-        return successfulItems;
+        return [...syncedRows, ...pendingRows];
     }
 
     /**
@@ -168,7 +384,8 @@ class Knowledge {
      */
     static async findByUserId(userId, limit = 100, offset = 0) {
         const query = `
-            SELECT * FROM knowledge_chunks
+            SELECT *
+            FROM knowledge_chunks
             WHERE user_id = $1
             ORDER BY created_at DESC
             LIMIT $2 OFFSET $3
@@ -186,7 +403,8 @@ class Knowledge {
      */
     static async findBySource(source, limit = 100, offset = 0) {
         const query = `
-            SELECT * FROM knowledge_chunks
+            SELECT *
+            FROM knowledge_chunks
             WHERE source = $1
             ORDER BY created_at DESC
             LIMIT $2 OFFSET $3
@@ -196,7 +414,7 @@ class Knowledge {
     }
 
     /**
-     * 语义搜索：基于 LangChain PGVectorStore 检索知识片段
+     * 语义搜索：通过 Haystack 检索知识片段
      * @param {string} queryText - 查询文本
      * @param {string} userId - 用户UUID（可选）
      * @param {number} limit - 返回数量
@@ -209,9 +427,10 @@ class Knowledge {
         }
 
         try {
-            const rawResults = await knowledgeVectorStore.similaritySearch(queryText, {
+            const rawResults = await ragProvider.searchKnowledge(queryText, {
+                userId,
                 limit,
-                filter: userId ? { user_id: userId } : undefined
+                similarityThreshold
             });
             const matchedResults = rawResults.filter((item) => item.similarity >= similarityThreshold);
 
@@ -219,7 +438,10 @@ class Knowledge {
                 return [];
             }
 
-            const rows = await this.findByIds(matchedResults.map((item) => item.id));
+            const validIds = matchedResults
+                .map((item) => item.id)
+                .filter((id) => typeof id === 'string' && UUID_PATTERN.test(id));
+            const rows = await Knowledge.findByIds(validIds);
             const rowsById = mapRowsById(rows);
 
             return matchedResults.map((item) => {
@@ -234,8 +456,8 @@ class Knowledge {
                 return {
                     id: item.id,
                     content: item.content,
-                    source: item.metadata?.source || null,
-                    user_id: item.metadata?.user_id || null,
+                    source: item.source || null,
+                    user_id: item.user_id || null,
                     metadata: item.metadata || {},
                     similarity: item.similarity
                 };
@@ -262,7 +484,7 @@ class Knowledge {
             throw new Error('没有提供更新字段');
         }
 
-        const existing = await this.findById(id);
+        const existing = await Knowledge.findById(id);
         if (!existing) {
             throw new Error('知识片段不存在');
         }
@@ -277,7 +499,7 @@ class Knowledge {
                 : existing.user_id,
             metadata: updates.metadata !== undefined
                 ? (isPlainObject(updates.metadata) ? { ...updates.metadata } : {})
-                : (isPlainObject(existing.metadata) ? { ...existing.metadata } : {})
+                : Knowledge.sanitizeMetadata(existing.metadata)
         };
 
         if (!normalizedUpdates.content) {
@@ -288,65 +510,56 @@ class Knowledge {
             throw new Error('User ID 必须是有效 UUID');
         }
 
-        const metadata = knowledgeVectorStore.buildMetadata({
+        const metadata = Knowledge.buildStoredMetadata({
             user_id: normalizedUpdates.user_id,
             source: normalizedUpdates.source,
-            metadata: normalizedUpdates.metadata
+            metadata: normalizedUpdates.metadata,
+            syncStatus: 'pending',
+            syncError: ragProvider.isConfigured() ? '' : 'Haystack 未配置'
         });
 
-        const fields = [];
-        const values = [];
-        let paramIndex = 1;
-
-        if (updates.content !== undefined) {
-            fields.push(`content = $${paramIndex}`);
-            values.push(normalizedUpdates.content);
-            paramIndex += 1;
-        }
-
-        if (updates.source !== undefined) {
-            fields.push(`source = $${paramIndex}`);
-            values.push(normalizedUpdates.source);
-            paramIndex += 1;
-        }
-
-        if (updates.user_id !== undefined) {
-            fields.push(`user_id = $${paramIndex}`);
-            values.push(normalizedUpdates.user_id);
-            paramIndex += 1;
-        }
-
-        fields.push(`metadata = $${paramIndex}::jsonb`);
-        values.push(JSON.stringify(metadata));
-        paramIndex += 1;
-
-        if (updates.content !== undefined) {
-            const embedding = await knowledgeVectorStore.embedText(normalizedUpdates.content);
-            const embeddingSql = knowledgeVectorStore.toVectorSql(embedding);
-
-            if (!embeddingSql) {
-                throw new Error('知识向量生成失败');
-            }
-
-            fields.push(`embedding = $${paramIndex}::vector`);
-            values.push(embeddingSql);
-            paramIndex += 1;
-        }
-
-        values.push(id);
-        const query = `
+        const result = await db.query(`
             UPDATE knowledge_chunks
-            SET ${fields.join(', ')}
-            WHERE id = $${paramIndex}
+            SET user_id = $1,
+                content = $2,
+                source = $3,
+                metadata = $4::jsonb,
+                embedding = NULL
+            WHERE id = $5
             RETURNING *
-        `;
+        `, [
+            normalizedUpdates.user_id,
+            normalizedUpdates.content,
+            normalizedUpdates.source,
+            JSON.stringify(metadata),
+            id
+        ]);
 
-        const result = await db.query(query, values);
         if (result.rows.length === 0) {
             throw new Error('知识片段不存在');
         }
 
-        return result.rows[0];
+        const updatedRow = result.rows[0];
+        const syncResult = await Knowledge.syncRowsToRag([updatedRow]);
+
+        return syncResult.syncedRows[0]
+            || syncResult.pendingRows[0]
+            || syncResult.failedRows[0]
+            || updatedRow;
+    }
+
+    static async resyncById(id) {
+        const existing = await Knowledge.findById(id);
+        if (!existing) {
+            throw new Error('知识片段不存在');
+        }
+
+        const syncResult = await Knowledge.syncRowsToRag([existing]);
+
+        return syncResult.syncedRows[0]
+            || syncResult.pendingRows[0]
+            || syncResult.failedRows[0]
+            || existing;
     }
 
     /**
@@ -355,6 +568,15 @@ class Knowledge {
      * @returns {Promise<boolean>} 是否删除成功
      */
     static async delete(id) {
+        const existing = await Knowledge.findById(id);
+        if (!existing) {
+            return false;
+        }
+
+        if (ragProvider.isConfigured()) {
+            await ragProvider.deleteKnowledge([id]);
+        }
+
         const query = 'DELETE FROM knowledge_chunks WHERE id = $1 RETURNING id';
         const result = await db.query(query, [id]);
         return result.rows.length > 0;
@@ -366,6 +588,17 @@ class Knowledge {
      * @returns {Promise<number>} 删除的数量
      */
     static async deleteByUserId(userId) {
+        const rows = await Knowledge.findByUserId(userId, 10000, 0);
+        const ids = rows.map((row) => row.id);
+
+        if (ids.length === 0) {
+            return 0;
+        }
+
+        if (ragProvider.isConfigured()) {
+            await ragProvider.deleteKnowledge(ids);
+        }
+
         const query = 'DELETE FROM knowledge_chunks WHERE user_id = $1 RETURNING id';
         const result = await db.query(query, [userId]);
         return result.rows.length;
@@ -419,17 +652,17 @@ class Knowledge {
                 source: 'test'
             };
 
-            const created = await this.create(testKnowledge);
+            const created = await Knowledge.create(testKnowledge);
             if (!created || !created.id) {
                 throw new Error('创建知识片段失败');
             }
 
-            const searchResults = await this.semanticSearch('测试知识', null, 5);
+            const searchResults = await Knowledge.semanticSearch('测试知识', null, 5, 0.1);
             if (!Array.isArray(searchResults)) {
                 throw new Error('语义搜索返回格式不正确');
             }
 
-            await this.delete(created.id);
+            await Knowledge.delete(created.id);
 
             console.log('✅ 知识片段功能测试成功');
             console.log(`📊 语义搜索返回: ${searchResults.length} 个结果`);

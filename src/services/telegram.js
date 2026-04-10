@@ -4,9 +4,16 @@ const express = require('express');
 const User = require('../models/user');
 const Message = require('../models/message');
 const Knowledge = require('../models/knowledge');
+const Profile = require('../models/profile');
 const AIService = require('./ai');
 const NotionService = require('./notion');
-const knowledgeVectorStore = require('./rag/knowledge-vector-store');
+const MemoryService = require('./memory-service');
+const {
+    createTraceId,
+    buildUserMessageMetadata,
+    buildAssistantMessageMetadata
+} = require('./conversation-trace');
+const ragProvider = require('./rag/provider');
 const config = require('../config');
 const {
     errorHandler,
@@ -25,6 +32,7 @@ class TelegramService {
         this.config = cfg; // 保持向后兼容
         this.bot = null;
         this.aiService = null;
+        this.memoryService = null;
         this.notionService = null; // Day 4: Notion归档服务
         this.isRunning = false;
         this.webhookServer = null;   // Phase 2: Webhook HTTP 服务器
@@ -42,6 +50,7 @@ class TelegramService {
         // 初始化AI服务
         this.aiService = new AIService(this.config.ai);
         await this.aiService.initialize();
+        this.memoryService = new MemoryService({ aiService: this.aiService });
 
         // 初始化Notion归档服务（Day 4）
         this.notionService = new NotionService();
@@ -113,27 +122,38 @@ class TelegramService {
         });
 
         // 健康检查端点
-        app.get('/health', (req, res) => {
-            const ragStatus = knowledgeVectorStore.getStatus();
+        app.get('/health', async (req, res) => {
+            const ragStatus = await ragProvider.getStatus();
             const warnings = [
                 {
+                    code: 'PROFILE_MEMORY_ACTIVE',
+                    message: '闭环 v1 使用 profiles 维护长期记忆，messages 仅保留短期上下文'
+                },
+                {
                     code: 'MESSAGE_SEMANTIC_MEMORY_DISABLED',
-                    message: 'messages 语义记忆已停用，当前仅保留 knowledge RAG'
+                    message: 'messages 语义记忆已停用，不再参与回复链路'
                 }
             ];
             const payload = {
                 status: 'ok',
                 mode: 'webhook',
                 capabilities: {
-                    knowledgeSearch: ragStatus.degraded ? 'degraded' : 'enabled',
-                    semanticMemory: 'disabled'
+                    knowledgeSearch: ragStatus.enabled ? 'enabled' : 'degraded',
+                    semanticMemory: 'disabled',
+                    longTermMemory: 'profiles'
                 }
             };
 
-            if (ragStatus.degraded) {
+            if (!ragStatus.healthy) {
                 warnings.unshift({
-                    code: 'KNOWLEDGE_RAG_DETERMINISTIC_EMBEDDINGS',
-                    message: 'knowledge RAG 当前使用本地 deterministic 向量，检索质量有限'
+                    code: ragStatus.configured
+                        ? 'KNOWLEDGE_RAG_HAYSTACK_UNAVAILABLE'
+                        : 'KNOWLEDGE_RAG_HAYSTACK_NOT_CONFIGURED',
+                    message: ragStatus.message || (
+                        ragStatus.configured
+                            ? 'Haystack 当前不可用，knowledge RAG 已降级为空结果'
+                            : 'Haystack 未配置，knowledge RAG 已降级为空结果'
+                    )
                 });
             }
 
@@ -157,6 +177,69 @@ class TelegramService {
             console.log(`✅ Telegram Webhook 已注册: ${fullUrl}`);
         } else {
             console.warn('⚠️  TELEGRAM_WEBHOOK_URL 未配置，请手动调用 setWebHook()');
+        }
+    }
+
+    async loadConversationContext(user, username, telegramUserId, userMessage, excludedMessageId = null) {
+        const contextLimit = config.telegram.contextLimit;
+        const knowledgePromise = Knowledge.semanticSearch(userMessage, user.id, 5, 0.6)
+            .catch((ragError) => {
+                console.warn('⚠️ knowledge RAG 检索失败，使用纯时序上下文:', ragError.message);
+                return [];
+            });
+
+        const [profile, recentMessages, relevantKnowledge] = await Promise.all([
+            Profile.findOrCreate(user.id, {
+                status: 'active',
+                preferences: Profile.buildDefaultMemory()
+            }),
+            Message.getRecentMessages(user.id, contextLimit),
+            knowledgePromise
+        ]);
+
+        const filteredRecentMessages = excludedMessageId
+            ? recentMessages.filter((message) => message.id !== excludedMessageId)
+            : recentMessages;
+
+        console.log(`📊 获取到最近 ${filteredRecentMessages.length} 条消息作为短期上下文（限制: ${contextLimit}）`);
+        if (relevantKnowledge.length > 0) {
+            console.log(`📚 Haystack 检索到 ${relevantKnowledge.length} 个相关知识片段`);
+        }
+
+        return {
+            profile,
+            profileMemory: Profile.buildMemoryBlock(profile),
+            recentMessages: filteredRecentMessages,
+            relevantKnowledge
+        };
+    }
+
+    async updateProfileMemoryAfterReply({ user, username, telegramUserId, userMessage, aiResponse, recentMessages, profile, traceId = null }) {
+        if (!this.memoryService) {
+            return null;
+        }
+
+        try {
+            const result = await this.memoryService.updateLongTermMemory({
+                user,
+                username,
+                telegramUserId,
+                userMessage,
+                aiResponse,
+                recentMessages,
+                profile,
+                traceId
+            });
+
+            if (result?.updated) {
+                console.log(`🧠 长期记忆已更新 [${username}:${telegramUserId}]`);
+                return result.profile;
+            }
+
+            return null;
+        } catch (error) {
+            console.warn(`⚠️ 长期记忆更新失败 [${username}:${telegramUserId}]: ${error.message}`);
+            return null;
         }
     }
 
@@ -370,6 +453,7 @@ class TelegramService {
      */
     async _processSingleMessage(chatId, userId, username, userMessage) {
         try {
+            const traceId = createTraceId();
             // 1. 确保用户存在
             const user = await this.ensureUser({
                 telegram_id: userId,
@@ -384,34 +468,23 @@ class TelegramService {
             const savedUserMessage = await Message.create({
                 user_id: user.id,
                 role: 'user',
-                content: userMessage
+                content: userMessage,
+                metadata: buildUserMessageMetadata({
+                    traceId,
+                    username
+                })
             });
 
             console.log(`💾 用户消息已保存 [ID: ${savedUserMessage.id}]`);
 
-            // 3. 获取最近消息作为上下文（使用配置）
-            const contextLimit = config.telegram.contextLimit;
-            const recentMessages = await Message.getRecentMessages(user.id, contextLimit);
-            console.log(`📊 获取到最近 ${recentMessages.length} 条消息作为上下文（限制: ${contextLimit}）`);
-
-            // 3a. RAG: 并行检索相关知识片段和历史记忆
-            let relevantKnowledge = [];
-            let semanticMessages = [];
-            try {
-                [relevantKnowledge, semanticMessages] = await Promise.all([
-                    Knowledge.semanticSearch(userMessage, user.id, 5, 0.6),
-                    Message.semanticSearchByText(userMessage, user.id, 3, 0.65)
-                ]);
-                if (relevantKnowledge.length > 0) {
-                    console.log(`📚 RAG检索到 ${relevantKnowledge.length} 个相关知识片段`);
-                }
-                if (semanticMessages.length > 0) {
-                    console.log(`🧠 RAG检索到 ${semanticMessages.length} 条相关历史记忆`);
-                }
-            } catch (ragError) {
-                // RAG失败不阻断主流程，降级为纯时序上下文
-                console.warn('⚠️ RAG检索失败，使用纯时序上下文:', ragError.message);
-            }
+            // 3. 获取 v1 闭环上下文：长期记忆 + 最近消息 + Haystack 知识
+            const conversationContext = await this.loadConversationContext(
+                user,
+                username,
+                userId,
+                userMessage,
+                savedUserMessage.id
+            );
 
             // 4. 准备AI上下文
             const context = {
@@ -421,9 +494,10 @@ class TelegramService {
                     telegram_id: userId
                 },
                 userMessage: userMessage,
-                recentMessages: recentMessages,
-                relevantKnowledge: relevantKnowledge,
-                semanticMessages: semanticMessages
+                traceId,
+                profileMemory: conversationContext.profileMemory,
+                recentMessages: conversationContext.recentMessages,
+                relevantKnowledge: conversationContext.relevantKnowledge
             };
 
             // 5. 生成AI回复
@@ -441,7 +515,12 @@ class TelegramService {
             const savedAiMessage = await Message.create({
                 user_id: user.id,
                 role: 'assistant',
-                content: aiResponse
+                content: aiResponse,
+                metadata: buildAssistantMessageMetadata({
+                    traceId,
+                    context,
+                    aiService: this.aiService
+                })
             });
 
             console.log(`💾 AI回复已保存 [ID: ${savedAiMessage.id}]`);
@@ -452,6 +531,19 @@ class TelegramService {
             });
 
             console.log(`📤 回复已发送给用户 [${username}:${userId}]`);
+
+            this.updateProfileMemoryAfterReply({
+                user,
+                username,
+                telegramUserId: userId,
+                userMessage,
+                aiResponse,
+                recentMessages: conversationContext.recentMessages,
+                profile: conversationContext.profile,
+                traceId
+            }).catch((memoryError) => {
+                console.warn(`⚠️ 异步更新长期记忆失败 [${username}:${userId}]: ${memoryError.message}`);
+            });
             
             return { success: true, messageId: savedAiMessage.id };
             

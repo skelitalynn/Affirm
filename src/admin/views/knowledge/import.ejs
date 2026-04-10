@@ -6,6 +6,7 @@
     <div class="form-group">
         <label for="user_id">User ID（可选，UUID）</label>
         <input type="text" id="user_id" name="user_id" class="form-control" placeholder="为空表示全局知识">
+        <small>留空表示全局知识；填写 UUID 表示批量导入到某个用户的私有知识域。</small>
     </div>
 
     <div class="form-group">
@@ -15,7 +16,7 @@
 
     <div class="form-group">
         <label for="items">批量内容（支持长文本，系统会自动切分）</label>
-        <small>系统会先按空行分段，再合并过短段落，并对超长内容做带重叠的切片。</small>
+        <small>系统会先按空行分段，再合并过短段落，并对超长内容做带重叠的切片；导入后会同步到 Haystack。</small>
         <textarea id="items" name="items" class="form-control" placeholder="第一段知识&#10;&#10;第二段知识&#10;&#10;也可以继续粘贴更长的正文内容" required></textarea>
     </div>
 

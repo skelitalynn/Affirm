@@ -1,110 +1,152 @@
 # Knowledge RAG 架构
 
-**更新日期**：2026-04-04
+**更新日期**：2026-04-10  
+**状态**：Haystack 版知识链路已接入
 
-本文只描述当前仓库里已经启用的 knowledge RAG，不讨论历史迁移计划。
+本文档只描述“外部知识层”，不讨论用户长期记忆。长期记忆统一放在 `profiles`。
 
-## 1. 核心文件
+## 1. 目标边界
 
-- `src/services/rag/knowledge-vector-store.js`
+Knowledge RAG 只解决三件事：
+
+1. 知识内容导入
+2. 知识内容检索
+3. 将结果以稳定格式返回给主应用
+
+它不负责：
+
+- 用户长期记忆
+- 原始消息日志
+- 最终回答生成
+
+## 2. 目标组件
+
+### Node 主应用
+
+职责：
+
+- 接收后台知识管理请求
+- 做最小规范化
+- 调用统一 `ragProvider`
+- 将检索结果传给 `AIService`
+
+### Haystack 侧车
+
+职责：
+
+- 文档清洗
+- 切块
+- 向量化
+- 元数据过滤
+- 检索
+- 可选重排
+
+### 本地桥接层
+
 - `src/models/knowledge.js`
-- `src/services/chunking.js`
-- `src/admin/routes/knowledge.js`
-- `src/services/telegram.js`
+- `knowledge_chunks`
 
-## 2. 数据表
+当前作用：
 
-当前使用表：`knowledge_chunks`
+- 本地落库
+- 同步状态追踪
+- 回填来源
+- 审计来源
 
-关键列：
+## 3. 知识文档模型
 
-- `id`
-- `user_id`
+每条知识最少包含：
+
 - `content`
 - `source`
-- `embedding`
-- `metadata`
-- `created_at`
-
-`metadata` 是当前检索和写入的主字段，`source` / `user_id` 保留为兼容旧 SQL 和后台列表。
-
-## 3. Embedding 模式选择
-
-`KnowledgeVectorStore.createRuntime()` 的选择顺序：
-
-1. `EMBEDDING_API_KEY`
-2. `OPENAI_API_KEY`
-3. 本地 deterministic 向量
-
-如果前两者存在但远程 embeddings 返回鉴权或网络错误，运行时会自动降级到 deterministic 向量。
-
-这意味着：
-
-- 你不需要单独配置 embedding key 才能跑通系统
-- 但没有远程 key 时，knowledge 检索只能作为开发态或低质量兜底
-
-## 4. 写入流程
-
-### 单条新增
-
-```text
-POST /admin/knowledge
-  -> Knowledge.create()
-  -> knowledgeVectorStore.addKnowledge()
-  -> PGVectorStore.addDocuments()
-  -> knowledge_chunks
-```
-
-### 批量导入
-
-```text
-POST /admin/knowledge/import
-  -> chunkingService.buildKnowledgeItems()
-  -> Knowledge.createBatch()
-  -> knowledgeVectorStore.addKnowledgeBatch()
-  -> PGVectorStore.addDocuments()
-  -> knowledge_chunks
-```
-
-导入时会写入这些 metadata：
-
-- `created_by`
+- `scope`
+- `user_id`
+- `document_id`
+- `chunk_id`
 - `import_batch`
-- `chunk_index`
-- `chunk_count`
 
-## 5. 检索流程
+推荐元数据示例：
+
+```json
+{
+  "scope": "global",
+  "source": "admin-import",
+  "document_id": "doc-001",
+  "chunk_id": "doc-001#03",
+  "import_batch": "admin-import-20260410"
+}
+```
+
+## 4. 导入流
+
+```text
+Admin form / import
+  -> normalize payload
+  -> Knowledge.create() / createBatch()
+  -> write knowledge_chunks
+  -> ragProvider.upsertKnowledge()
+  -> Haystack indexing pipeline
+  -> update metadata.rag_sync
+```
+
+## 5. 查询流
 
 ```text
 Telegram userMessage
-  -> Knowledge.semanticSearch(queryText, userId, limit, threshold)
-  -> knowledgeVectorStore.similaritySearch()
-  -> PGVectorStore.similaritySearchWithScore()
-  -> threshold 过滤
-  -> relevantKnowledge
+  -> Knowledge.semanticSearch(query, userId)
+  -> ragProvider.searchKnowledge(query, userId)
+  -> filter(global + user-scoped)
+  -> return top-k chunks
   -> AIService.prepareMessages()
 ```
 
-## 6. 当前边界
+## 6. 过滤规则
 
-### 已启用
+查询时必须同时覆盖两类知识：
 
-- knowledge 写入
-- knowledge 批量导入
-- knowledge 语义检索
-- metadata 同步
+1. 全局知识：`scope == global`
+2. 用户知识：`scope == user AND user_id == current_user`
 
-### 未启用
+这是硬约束。不能只查用户知识，也不能混查所有用户的私有知识。
 
-- message 语义记忆
-- reranker
-- hybrid search
-- citation
+## 7. 推荐的 Haystack 管道
 
-## 7. 开发这个模块时的最低顺序
+### 写入管道
 
-1. 先看 `src/services/rag/knowledge-vector-store.js`
-2. 再看 `src/models/knowledge.js`
-3. 然后看 `src/admin/routes/knowledge.js`
-4. 如果改导入切分，再看 `src/services/chunking.js`
-5. 如果改对话注入，再回到 `src/services/telegram.js`
+- `DocumentCleaner`
+- `DocumentSplitter` 或 `HierarchicalDocumentSplitter`
+- `SentenceTransformersDocumentEmbedder`
+- `DocumentWriter`
+
+### 查询管道
+
+- `SentenceTransformersTextEmbedder`
+- `EmbeddingRetriever`
+- 可选 `AutoMergingRetriever`
+- 可选 `SimilarityRanker`
+
+当前优先级仍是把基础检索跑通，不是先上复杂 hybrid search。
+
+## 8. 与长期记忆的关系
+
+- 用户目标、偏好、待跟进事项不写进 Haystack
+- `profiles` 不用来存知识库 chunk
+- prompt 注入顺序里，`profile memory` 永远在 `knowledge` 前面
+
+## 9. Node 与 Haystack 的接口边界
+
+主应用和 Haystack 之间只暴露三类接口：
+
+- `upsertKnowledge(docs)`
+- `deleteKnowledge(ids)`
+- `searchKnowledge(query, userId)`
+
+这样业务代码不会直接耦合 Haystack 内部 pipeline 细节。
+
+## 10. 最小验证
+
+1. 后台新增一条全局知识
+2. 后台新增一条用户知识
+3. 检查 `rag_sync` 状态正确
+4. 发起相关问题，确认命中结果正确
+5. Haystack 不可用时，确认主应用能降级运行

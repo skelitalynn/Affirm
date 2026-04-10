@@ -1,6 +1,18 @@
 // AI服务 - 基于OpenAI兼容API，支持多提供商，无降级逻辑
 const OpenAI = require('openai');
 
+function toStringArray(value, maxItems = 10) {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
+    return Array.from(new Set(
+        value
+            .map((item) => String(item || '').trim())
+            .filter(Boolean)
+    )).slice(0, maxItems);
+}
+
 class AIService {
     constructor(config) {
         this.config = config;
@@ -125,6 +137,13 @@ class AIService {
     prepareMessages(context) {
         const messages = [];
 
+        // 长期记忆注入
+        let profileMemoryContext = '';
+        if (context.profileMemory && String(context.profileMemory).trim()) {
+            profileMemoryContext = '\n\n长期记忆（请优先保持与这些用户信息一致）：\n'
+                + String(context.profileMemory).trim();
+        }
+
         // RAG: 相关知识片段注入
         let ragKnowledgeContext = '';
         if (context.relevantKnowledge && context.relevantKnowledge.length > 0) {
@@ -134,22 +153,13 @@ class AIService {
                     .join('\n');
         }
 
-        // RAG: 语义相关历史记忆注入
-        let ragMemoryContext = '';
-        if (context.semanticMessages && context.semanticMessages.length > 0) {
-            ragMemoryContext = '\n\n相关历史记忆（用户曾经提到过的相关内容）：\n' +
-                context.semanticMessages
-                    .map(m => `- [${m.role === 'user' ? '用户' : '你'}] ${m.content.substring(0, 200)}`)
-                    .join('\n');
-        }
-
         // 系统提示
         const systemPrompt = `你是一个有帮助的显化导师，帮助用户通过积极肯定语和思维重塑来达成目标。
 
 用户信息：
 - 用户名: ${context.user.username || '用户'}
 - 用户ID: ${context.user.id}
-${ragKnowledgeContext}${ragMemoryContext}
+${profileMemoryContext}${ragKnowledgeContext}
 
 请保持温暖、鼓励的语气，提供实用的建议和积极的肯定语。
 如果用户分享目标或愿望，帮助他们转化为积极的肯定语。
@@ -177,6 +187,115 @@ ${ragKnowledgeContext}${ragMemoryContext}
         });
 
         return messages;
+    }
+
+    parseJsonResponse(rawContent) {
+        if (typeof rawContent !== 'string' || !rawContent.trim()) {
+            return null;
+        }
+
+        const normalized = rawContent
+            .trim()
+            .replace(/^```json\s*/i, '')
+            .replace(/^```\s*/i, '')
+            .replace(/\s*```$/i, '')
+            .trim();
+
+        try {
+            return JSON.parse(normalized);
+        } catch {
+            const match = normalized.match(/\{[\s\S]*\}/);
+            if (!match) {
+                return null;
+            }
+
+            try {
+                return JSON.parse(match[0]);
+            } catch {
+                return null;
+            }
+        }
+    }
+
+    async generateMemoryPatch(context = {}) {
+        if (!this.client || !this.initialized) {
+            return null;
+        }
+
+        const conversation = Array.isArray(context.recentMessages)
+            ? context.recentMessages.slice(-8).map((message) => ({
+                role: message.role,
+                content: String(message.content || '').slice(0, 600)
+            }))
+            : [];
+        const instruction = {
+            user: {
+                id: context.user?.id || '',
+                username: context.user?.username || '用户'
+            },
+            current_memory: context.currentMemory || {},
+            latest_exchange: {
+                user_message: String(context.userMessage || ''),
+                assistant_response: String(context.aiResponse || '')
+            },
+            recent_messages: conversation,
+            rules: [
+                '只记录对后续对话有帮助的长期信息',
+                '不要记录一次性情绪、外部知识或未经用户确认的推断',
+                'summary 只有在需要刷新时才填写，否则返回空字符串',
+                'goals 只有在需要刷新长期目标时才填写，否则返回空字符串',
+                'facts、communication_preferences、open_loops 只返回应新增的条目',
+                '如果没有值得更新的内容，should_update 返回 false'
+            ],
+            response_schema: {
+                should_update: true,
+                summary: '',
+                goals: '',
+                status: '',
+                facts: [],
+                communication_preferences: [],
+                open_loops: []
+            }
+        };
+
+        try {
+            const completion = await this.client.chat.completions.create({
+                model: this.model,
+                messages: [
+                    {
+                        role: 'system',
+                        content: '你是一个用户长期记忆整理器。请返回严格 JSON，不要输出解释、Markdown 或代码块。'
+                    },
+                    {
+                        role: 'user',
+                        content: JSON.stringify(instruction, null, 2)
+                    }
+                ],
+                temperature: 0.2,
+                max_tokens: 600,
+                top_p: 0.9,
+                timeout: 10000
+            });
+
+            const rawContent = completion.choices?.[0]?.message?.content || '';
+            const parsed = this.parseJsonResponse(rawContent);
+            if (!parsed || typeof parsed !== 'object') {
+                throw new Error('memory patch 解析失败');
+            }
+
+            return {
+                should_update: Boolean(parsed.should_update),
+                summary: typeof parsed.summary === 'string' ? parsed.summary.trim() : '',
+                goals: typeof parsed.goals === 'string' ? parsed.goals.trim() : '',
+                status: typeof parsed.status === 'string' ? parsed.status.trim() : '',
+                facts: toStringArray(parsed.facts, 12),
+                communication_preferences: toStringArray(parsed.communication_preferences, 12),
+                open_loops: toStringArray(parsed.open_loops, 12)
+            };
+        } catch (error) {
+            console.warn(`⚠️ 长期记忆整理失败: ${error.message}`);
+            return null;
+        }
     }
 
     /**

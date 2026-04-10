@@ -1,6 +1,6 @@
 <div class="action-bar">
     <a href="/admin/profiles/new" class="btn btn-primary">
-        <i class="fas fa-plus"></i> 创建Profile
+        <i class="fas fa-plus"></i> 创建 Profile
     </a>
 </div>
 
@@ -11,8 +11,8 @@
             <th>User ID</th>
             <th>目标</th>
             <th>状态</th>
-            <th>偏好</th>
-            <th>创建时间</th>
+            <th>长期记忆</th>
+            <th>更新时间</th>
             <th>操作</th>
         </tr>
     </thead>
@@ -31,13 +31,13 @@
                             <span class="text-muted">无</span>
                         <% } %>
                     </td>
-                    <td><%= new Date(profile.created_at).toLocaleString() %></td>
+                    <td><%= new Date(profile.updated_at || profile.created_at).toLocaleString() %></td>
                     <td class="actions">
                         <a href="/admin/profiles/<%= profile.id %>/edit" class="btn btn-sm btn-edit">
                             <i class="fas fa-edit"></i> 编辑
                         </a>
                         <form action="/admin/profiles/<%= profile.id %>/delete" method="POST" style="display: inline;">
-                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('确定删除此profile？')">
+                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('确定删除这个 Profile 吗？')">
                                 <i class="fas fa-trash"></i> 删除
                             </button>
                         </form>
@@ -46,7 +46,7 @@
             <% }) %>
         <% } else { %>
             <tr>
-                <td colspan="7" class="text-center">暂无profiles，<a href="/admin/profiles/new">创建一个</a></td>
+                <td colspan="7" class="text-center">暂无 Profile，<a href="/admin/profiles/new">创建一个</a></td>
             </tr>
         <% } %>
     </tbody>

@@ -7,10 +7,10 @@
             <div class="stat-content">
                 <h3>Profiles</h3>
                 <p class="stat-number"><%= stats.profilesCount || 0 %></p>
-                <p class="stat-desc">已配置的身份模板</p>
+                <p class="stat-desc">已配置的长期记忆记录</p>
             </div>
         </div>
-        
+
         <div class="stat-card">
             <div class="stat-icon">
                 <i class="fas fa-brain"></i>
@@ -18,10 +18,10 @@
             <div class="stat-content">
                 <h3>知识条目</h3>
                 <p class="stat-number"><%= stats.knowledgeCount || 0 %></p>
-                <p class="stat-desc">已存储的知识片段</p>
+                <p class="stat-desc">本地桥接层中的知识片段</p>
             </div>
         </div>
-        
+
         <div class="stat-card">
             <div class="stat-icon">
                 <i class="fas fa-comments"></i>
@@ -29,22 +29,58 @@
             <div class="stat-content">
                 <h3>对话消息</h3>
                 <p class="stat-number"><%= stats.messagesCount || 0 %></p>
-                <p class="stat-desc">已处理的对话</p>
+                <p class="stat-desc">已处理的用户与助手消息</p>
             </div>
         </div>
-        
+
         <div class="stat-card">
             <div class="stat-icon">
-                <i class="fas fa-database"></i>
+                <i class="fas fa-arrows-rotate"></i>
             </div>
             <div class="stat-content">
-                <h3>数据库</h3>
-                <p class="stat-number">正常</p>
-                <p class="stat-desc">连接状态良好</p>
+                <h3>同步任务</h3>
+                <p class="stat-number"><%= stats.syncJobsCount || 0 %></p>
+                <p class="stat-desc">memory / knowledge 异步任务</p>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon">
+                <i class="fas fa-list-check"></i>
+            </div>
+            <div class="stat-content">
+                <h3>队列模式</h3>
+                <p class="stat-number"><%= stats.queueMode || 'unknown' %></p>
+                <p class="stat-desc">当前消息队列实现</p>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon">
+                <i class="fas fa-wave-square"></i>
+            </div>
+            <div class="stat-content">
+                <h3>Knowledge RAG</h3>
+                <p class="stat-number"><%= stats.ragStatus || 'unknown' %></p>
+                <p class="stat-desc">Haystack 检索链路状态</p>
             </div>
         </div>
     </div>
-    
+
+    <div class="recent-activity">
+        <h3><i class="fas fa-server"></i> 系统概览</h3>
+        <ul>
+            <li>队列状态：<%= systemOverview?.queueStats?.mode || 'unknown' %>，processed=<%= systemOverview?.queueStats?.totalProcessed || 0 %>，failed=<%= systemOverview?.queueStats?.totalFailed || 0 %></li>
+            <li>Haystack：<%= systemOverview?.ragStatus?.enabled ? 'enabled' : (systemOverview?.ragStatus?.configured ? 'degraded' : 'not configured') %></li>
+            <li>同步任务：pending=<%= systemOverview?.syncJobSummary?.byStatus?.pending || 0 %>，processing=<%= systemOverview?.syncJobSummary?.byStatus?.processing || 0 %>，completed=<%= systemOverview?.syncJobSummary?.byStatus?.completed || 0 %>，failed=<%= systemOverview?.syncJobSummary?.byStatus?.failed || 0 %></li>
+        </ul>
+        <div class="action-bar">
+            <a href="/admin/sync-jobs" class="btn btn-secondary">
+                <i class="fas fa-arrows-rotate"></i> 查看同步任务
+            </a>
+        </div>
+    </div>
+
     <div class="recent-activity">
         <h3><i class="fas fa-history"></i> 最近活动</h3>
         <ul>

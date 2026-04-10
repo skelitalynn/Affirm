@@ -1,0 +1,107 @@
+<div class="action-bar">
+    <form action="/admin/sync-jobs" method="GET" class="filter-form">
+        <div class="filter-group">
+            <label for="status">状态</label>
+            <select id="status" name="status" class="form-control">
+                <option value="">全部</option>
+                <option value="pending" <%= filters?.status === 'pending' ? 'selected' : '' %>>pending</option>
+                <option value="processing" <%= filters?.status === 'processing' ? 'selected' : '' %>>processing</option>
+                <option value="completed" <%= filters?.status === 'completed' ? 'selected' : '' %>>completed</option>
+                <option value="failed" <%= filters?.status === 'failed' ? 'selected' : '' %>>failed</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label for="job_type">任务类型</label>
+            <input
+                id="job_type"
+                name="job_type"
+                type="text"
+                class="form-control"
+                value="<%= filters?.jobType || '' %>"
+                placeholder="memory_update / knowledge_sync"
+            >
+        </div>
+
+        <button type="submit" class="btn btn-primary">
+            <i class="fas fa-filter"></i> 筛选
+        </button>
+        <a href="/admin/sync-jobs" class="btn btn-secondary">
+            <i class="fas fa-rotate-left"></i> 重置
+        </a>
+    </form>
+</div>
+
+<div class="stats compact-stats">
+    <div class="stat-card">
+        <div class="stat-content">
+            <h3>总任务数</h3>
+            <p class="stat-number"><%= summary?.total || 0 %></p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-content">
+            <h3>Pending</h3>
+            <p class="stat-number"><%= summary?.byStatus?.pending || 0 %></p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-content">
+            <h3>Processing</h3>
+            <p class="stat-number"><%= summary?.byStatus?.processing || 0 %></p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-content">
+            <h3>Completed</h3>
+            <p class="stat-number"><%= summary?.byStatus?.completed || 0 %></p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-content">
+            <h3>Failed</h3>
+            <p class="stat-number"><%= summary?.byStatus?.failed || 0 %></p>
+        </div>
+    </div>
+</div>
+
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>任务类型</th>
+            <th>状态</th>
+            <th>日期</th>
+            <th>详情</th>
+            <th>创建时间</th>
+            <th>完成时间</th>
+        </tr>
+    </thead>
+    <tbody>
+        <% if (jobs && jobs.length > 0) { %>
+            <% jobs.forEach(job => { %>
+                <tr>
+                    <td><%= job.id %></td>
+                    <td><strong><%= job.job_type %></strong></td>
+                    <td>
+                        <span class="status-badge status-<%= job.status %>"><%= job.status %></span>
+                    </td>
+                    <td><%= job.date_key || '-' %></td>
+                    <td>
+                        <% if (job.details && Object.keys(job.details).length > 0) { %>
+                            <code><%= JSON.stringify(job.details) %></code>
+                        <% } else { %>
+                            <span class="text-muted">无</span>
+                        <% } %>
+                    </td>
+                    <td><%= job.created_at ? new Date(job.created_at).toLocaleString() : '-' %></td>
+                    <td><%= job.completed_at ? new Date(job.completed_at).toLocaleString() : '-' %></td>
+                </tr>
+            <% }) %>
+        <% } else { %>
+            <tr>
+                <td colspan="7" class="text-center">暂无符合条件的同步任务</td>
+            </tr>
+        <% } %>
+    </tbody>
+</table>

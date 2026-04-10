@@ -1,7 +1,9 @@
 // 健康检查模块
 const { db } = require('./db/connection');
-const knowledgeVectorStore = require('./services/rag/knowledge-vector-store');
+const ragProvider = require('./services/rag/provider');
 const config = require('./config');
+const { messageQueue } = require('./utils/message-queue');
+const SyncJob = require('./models/sync-job');
 
 async function healthCheck() {
     const checks = [];
@@ -45,25 +47,57 @@ async function healthCheck() {
         }
     });
 
-    const knowledgeRagStatus = knowledgeVectorStore.getStatus();
+    checks.push({
+        name: 'message_queue',
+        status: 'healthy',
+        details: messageQueue.getStats()
+    });
+
+    try {
+        const syncJobSummary = await SyncJob.summarize();
+        checks.push({
+            name: 'sync_jobs',
+            status: syncJobSummary.byStatus?.failed > 0 ? 'warning' : 'healthy',
+            details: syncJobSummary
+        });
+    } catch (error) {
+        checks.push({
+            name: 'sync_jobs',
+            status: 'warning',
+            details: {
+                message: error.message
+            }
+        });
+    }
+
+    const knowledgeRagStatus = await ragProvider.getStatus();
     checks.push({
         name: 'knowledge_rag',
-        status: knowledgeRagStatus.degraded ? 'warning' : 'healthy',
-        details: knowledgeRagStatus.degraded
-            ? {
+        status: knowledgeRagStatus.healthy ? 'healthy' : 'warning',
+        details: knowledgeRagStatus.healthy
+            ? knowledgeRagStatus
+            : {
                 ...knowledgeRagStatus,
-                code: 'KNOWLEDGE_RAG_DETERMINISTIC_EMBEDDINGS',
-                message: 'knowledge RAG 当前使用本地 deterministic 向量，检索质量有限'
+                code: knowledgeRagStatus.configured
+                    ? 'KNOWLEDGE_RAG_HAYSTACK_UNAVAILABLE'
+                    : 'KNOWLEDGE_RAG_HAYSTACK_NOT_CONFIGURED',
+                message: knowledgeRagStatus.message || (
+                    knowledgeRagStatus.configured
+                        ? 'Haystack 当前不可用，知识检索已降级为空结果'
+                        : 'Haystack 未配置，知识检索已降级为空结果'
+                )
             }
-            : knowledgeRagStatus
     });
 
     checks.push({
-        name: 'message_semantic_memory',
-        status: 'warning',
+        name: 'profile_memory',
+        status: config.memory.enabled ? 'healthy' : 'warning',
         details: {
-            code: 'MESSAGE_SEMANTIC_MEMORY_DISABLED',
-            message: 'messages 语义记忆已停用，当前仅保留 knowledge RAG'
+            code: config.memory.enabled ? 'PROFILE_MEMORY_V2_ACTIVE' : 'PROFILE_MEMORY_DISABLED',
+            message: config.memory.enabled
+                ? '闭环 v2 使用 MemoryService + profiles 维护长期记忆，messages 仅保留短期上下文'
+                : '长期记忆异步整理已关闭，当前仅保留 profiles 读取能力',
+            recordJobs: config.memory.recordJobs
         }
     });
 

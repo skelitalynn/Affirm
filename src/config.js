@@ -106,8 +106,9 @@ const config = {
         };
     })(),
     
-    // Knowledge RAG 向量配置
-    // EMBEDDING_API_KEY 现在是可选项；未配置时会在 knowledge RAG 中走本地 deterministic fallback
+    // Legacy embedding配置
+    // 闭环 v1 完成后，主链路的 knowledge RAG 由 Haystack 侧车负责
+    // 这里保留旧配置，仅用于迁移期兼容
     embedding: {
         provider: process.env.EMBEDDING_PROVIDER || 'openai',
         apiKey: process.env.EMBEDDING_API_KEY,
@@ -116,6 +117,22 @@ const config = {
         dimensions: parseInt(process.env.EMBEDDING_DIMENSIONS) || 768,
         sharedApiKey: process.env.OPENAI_API_KEY || '',
         sharedBaseURL: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1'
+    },
+
+    haystack: {
+        baseURL: process.env.HAYSTACK_BASE_URL ? process.env.HAYSTACK_BASE_URL.trim().replace(/\/+$/, '') : '',
+        apiKey: process.env.HAYSTACK_API_KEY || '',
+        timeoutMs: parseInt(process.env.HAYSTACK_TIMEOUT_MS) || 10000,
+        healthPath: process.env.HAYSTACK_HEALTH_PATH || '/health',
+        searchPath: process.env.HAYSTACK_SEARCH_PATH || '/knowledge/search',
+        upsertPath: process.env.HAYSTACK_UPSERT_PATH || '/knowledge/upsert',
+        deletePath: process.env.HAYSTACK_DELETE_PATH || '/knowledge/delete'
+    },
+
+    memory: {
+        enabled: process.env.MEMORY_V2_ENABLED !== 'false',
+        recordJobs: process.env.MEMORY_V2_RECORD_JOBS !== 'false',
+        contextMessages: parseInt(process.env.MEMORY_V2_CONTEXT_MESSAGES) || 8
     },
 
 
@@ -172,9 +189,18 @@ if (!aiConfig.apiKey) {
     console.warn('   - openai: OPENAI_API_KEY');
 }
 
-// 验证 Knowledge RAG 配置
+// 验证 Haystack 配置
+if (!config.haystack.baseURL) {
+    console.log('ℹ️ 未配置 HAYSTACK_BASE_URL，知识检索将降级为空结果');
+}
+
+if (!config.memory.enabled) {
+    console.log('ℹ️ MEMORY_V2_ENABLED=false，长期记忆异步整理已关闭');
+}
+
+// 提示 legacy embedding 配置状态
 if (!config.embedding.apiKey) {
-    console.log('ℹ️ 未配置 EMBEDDING_API_KEY，knowledge RAG 将自动回退到本地 deterministic 向量');
+    console.log('ℹ️ 未配置 EMBEDDING_API_KEY；如仍使用旧本地知识链路，将回退到 deterministic 向量');
 }
 
 module.exports = deepFreeze(config);

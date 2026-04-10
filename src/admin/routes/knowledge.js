@@ -30,6 +30,28 @@ function normalizeKnowledgePayload(body = {}) {
     };
 }
 
+function buildQueryString(params = {}) {
+    return Object.entries(params)
+        .filter(([, value]) => Boolean(value))
+        .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+        .join('&');
+}
+
+function buildKnowledgeFlash(row, successMessage) {
+    const syncInfo = Knowledge.getSyncInfo(row);
+    const flash = {
+        success: successMessage
+    };
+
+    if (syncInfo.status === 'pending') {
+        flash.error = `知识已保存到本地，但尚未同步到 Haystack：${syncInfo.message || '等待同步'}`;
+    } else if (syncInfo.status === 'failed') {
+        flash.error = `知识已保存到本地，但同步到 Haystack 失败：${syncInfo.message || '未知错误'}`;
+    }
+
+    return flash;
+}
+
 // 获取所有知识条目
 router.get('/', async (req, res) => {
     try {
@@ -60,9 +82,10 @@ router.get('/new', (req, res) => {
 router.post('/', async (req, res) => {
     try {
         const payload = normalizeKnowledgePayload(req.body);
-        await Knowledge.create(payload);
+        const created = await Knowledge.create(payload);
+        const flash = buildKnowledgeFlash(created, '知识条目添加成功');
 
-        res.redirect('/admin/knowledge?success=' + encodeURIComponent('知识条目添加成功'));
+        res.redirect('/admin/knowledge?' + buildQueryString(flash));
     } catch (error) {
         console.error('创建知识条目失败:', error);
         res.status(500).render('knowledge/form', {
@@ -104,12 +127,14 @@ router.post('/:id/update', async (req, res) => {
         }
 
         const payload = normalizeKnowledgePayload(req.body);
-        await Knowledge.update(req.params.id, {
+        const updated = await Knowledge.update(req.params.id, {
             content: payload.content,
-            source: payload.source
+            source: payload.source,
+            user_id: payload.user_id
         });
+        const flash = buildKnowledgeFlash(updated, '知识条目更新成功');
 
-        res.redirect('/admin/knowledge?success=' + encodeURIComponent('知识条目更新成功'));
+        res.redirect('/admin/knowledge?' + buildQueryString(flash));
     } catch (error) {
         console.error('更新知识条目失败:', error);
         res.status(500).render('knowledge/form', {
@@ -167,7 +192,13 @@ router.post('/import', async (req, res) => {
                 chunk_count: knowledgeItems.length
             }
         })), { detailed: true });
-        const { total, successCount, failureCount, failedItems } = result;
+        const {
+            total,
+            successCount,
+            pendingCount = 0,
+            failureCount,
+            failedItems
+        } = result;
 
         if (failureCount > 0) {
             const errorMessages = Array.from(new Set(
@@ -183,10 +214,31 @@ router.post('/import', async (req, res) => {
             ));
         }
 
-        res.redirect('/admin/knowledge?success=' + encodeURIComponent(`批量导入完成: 共 ${total} 个片段，全部成功`));
+        const flash = {
+            success: `批量导入完成: 共 ${total} 个片段，${successCount} 已同步到 Haystack`
+        };
+
+        if (pendingCount > 0) {
+            flash.error = `另有 ${pendingCount} 个片段仅保存到本地，尚未同步到 Haystack`;
+        }
+
+        res.redirect('/admin/knowledge?' + buildQueryString(flash));
     } catch (error) {
         console.error('批量导入失败:', error);
         res.redirect('/admin/knowledge/import?error=' + encodeURIComponent('批量导入失败'));
+    }
+});
+
+// 手动重试同步
+router.post('/:id/resync', async (req, res) => {
+    try {
+        const synced = await Knowledge.resyncById(req.params.id);
+        const flash = buildKnowledgeFlash(synced, '知识条目已重新同步');
+
+        res.redirect('/admin/knowledge?' + buildQueryString(flash));
+    } catch (error) {
+        console.error('重新同步知识条目失败:', error);
+        res.redirect('/admin/knowledge?error=' + encodeURIComponent('重新同步失败'));
     }
 });
 
