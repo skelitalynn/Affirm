@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 /**
- * Affirm后台管理服务器
- * 提供Web界面用于配置管理
+ * Affirm 后台管理服务
+ * 提供 Web 界面用于配置管理
  */
-require('dotenv').config();
 const express = require('express');
 const expressLayouts = require('express-ejs-layouts');
 const helmet = require('helmet');
@@ -14,21 +13,22 @@ const { healthCheck } = require('../health');
 const Profile = require('../models/profile');
 const Knowledge = require('../models/knowledge');
 const Message = require('../models/message');
+const SyncJob = require('../models/sync-job');
+const ragProvider = require('../services/rag/provider');
+const { messageQueue } = require('../utils/message-queue');
 const authMiddleware = require('./middleware/auth');
 const profilesRouter = require('./routes/profiles');
 const knowledgeRouter = require('./routes/knowledge');
+const syncJobsRouter = require('./routes/sync-jobs');
 
-// 创建Express应用
 const app = express();
-const PORT = process.env.ADMIN_PORT || 3001;
+const PORT = config.admin.port;
 
-// 安全中间件
 app.use(helmet());
 
-// CORS：仅允许配置的来源，不再通配符（修复 2.3）
-const configuredOrigins = process.env.CORS_ORIGINS
-    ? process.env.CORS_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
-    : [];
+const configuredOrigins = (config.security.corsOrigins || [])
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 const allowedOrigins = Array.from(new Set([
     `http://localhost:${PORT}`,
     ...configuredOrigins
@@ -36,10 +36,15 @@ const allowedOrigins = Array.from(new Set([
 
 app.use(cors({
     origin: (origin, callback) => {
-        // 允许无 origin 的请求（如 curl、服务端直接调用）
-        if (!origin) return callback(null, true);
-        if (allowedOrigins.includes(origin)) return callback(null, true);
-        callback(new Error(`CORS: origin ${origin} not allowed`));
+        if (!origin) {
+            return callback(null, true);
+        }
+
+        if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+
+        return callback(new Error(`CORS: origin ${origin} not allowed`));
     },
     credentials: true
 }));
@@ -47,35 +52,27 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-/**
- * CSRF 防护中间件（修复 2.4）
- * 对所有状态变更请求（POST/PUT/DELETE/PATCH）检查 Origin 或 Referer 头，
- * 确保请求来自同源，阻止跨站伪造。
- * Basic Auth 在浏览器保存凭证后仍可被 CSRF 利用，因此此检查是必要的。
- */
 function csrfProtection(req, res, next) {
     const safeMethods = ['GET', 'HEAD', 'OPTIONS'];
-    if (safeMethods.includes(req.method)) return next();
+    if (safeMethods.includes(req.method)) {
+        return next();
+    }
 
-    const origin = req.headers['origin'];
-    const referer = req.headers['referer'];
+    const origin = req.headers.origin;
+    const referer = req.headers.referer;
 
-    // 提取来源 host
     let requestOrigin = null;
     if (origin) {
         requestOrigin = origin;
     } else if (referer) {
         try {
-            const url = new URL(referer);
-            requestOrigin = url.origin;
+            requestOrigin = new URL(referer).origin;
         } catch {
-            // referer 格式无效，拒绝
+            requestOrigin = null;
         }
     }
 
     if (!requestOrigin) {
-        // 无法确定来源的请求，拒绝（防止无头工具提交表单）
-        // 注意：API 客户端应设置 Origin 头
         return res.status(403).json({ error: 'CSRF protection: Origin header required' });
     }
 
@@ -84,13 +81,11 @@ function csrfProtection(req, res, next) {
         return res.status(403).json({ error: 'CSRF protection: origin not allowed' });
     }
 
-    next();
+    return next();
 }
 
-// 静态文件服务
 app.use('/static', express.static(path.join(__dirname, 'static')));
 
-// 设置视图引擎（使用EJS）
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.use(expressLayouts);
@@ -105,20 +100,42 @@ async function getSafeCount(model, fallback = 0) {
     }
 }
 
-// 认证中间件（所有 /admin 路由）
-app.use('/admin', authMiddleware);
+async function getSafeJobSummary() {
+    try {
+        return await SyncJob.summarize();
+    } catch (error) {
+        console.error('同步任务摘要获取失败:', error.message);
+        return {
+            total: 0,
+            byStatus: {
+                pending: 0,
+                processing: 0,
+                completed: 0,
+                failed: 0
+            },
+            recent: []
+        };
+    }
+}
 
-// CSRF 防护（认证后的所有状态变更请求）
+app.use('/admin', authMiddleware);
 app.use('/admin', csrfProtection);
 
-// 路由
 app.get('/admin', async (req, res) => {
     try {
-        const [profilesCount, knowledgeCount, messagesCount] = await Promise.all([
+        const [profilesCount, knowledgeCount, messagesCount, syncJobSummary, ragStatus] = await Promise.all([
             getSafeCount(Profile),
             getSafeCount(Knowledge),
-            getSafeCount(Message)
+            getSafeCount(Message),
+            getSafeJobSummary(),
+            ragProvider.getStatus().catch(() => ({
+                enabled: false,
+                healthy: false,
+                configured: false,
+                message: 'Haystack 状态获取失败'
+            }))
         ]);
+        const queueStats = messageQueue.getStats();
 
         res.render('dashboard', {
             title: 'Affirm后台管理',
@@ -127,45 +144,61 @@ app.get('/admin', async (req, res) => {
             stats: {
                 profilesCount,
                 knowledgeCount,
-                messagesCount
+                messagesCount,
+                syncJobsCount: syncJobSummary.total,
+                queueMode: queueStats.mode || 'uninitialized',
+                ragStatus: ragStatus.enabled ? 'enabled' : (ragStatus.configured ? 'degraded' : 'not_configured')
             },
-            recentActivity: []
+            systemOverview: {
+                queueStats,
+                ragStatus,
+                syncJobSummary
+            },
+            recentActivity: (syncJobSummary.recent || []).map((job) => ({
+                time: new Date(job.created_at).toLocaleString('zh-CN'),
+                text: `${job.job_type} - ${job.status}`
+            }))
         });
     } catch (error) {
         console.error('仪表盘渲染失败:', error);
-        res.status(500).render('500', { error: '仪表盘渲染失败', layout: false });
+        res.status(500).render('500', {
+            error: '仪表盘渲染失败',
+            layout: false,
+            nodeEnv: config.app.nodeEnv
+        });
     }
 });
 
 app.use('/admin/profiles', profilesRouter);
 app.use('/admin/knowledge', knowledgeRouter);
+app.use('/admin/sync-jobs', syncJobsRouter);
 
-// 健康检查端点：接入 health.js 实际检查数据库状态（修复 3.4）
 app.get('/health', async (req, res) => {
     const result = await healthCheck();
     const statusCode = result.status === 'degraded' ? 503 : 200;
     res.status(statusCode).json(result);
 });
 
-// 404处理（修复 4.4：视图文件已创建）
 app.use((req, res) => {
     res.status(404).render('404', { url: req.url, layout: false });
 });
 
-// 错误处理中间件（修复 4.4：视图文件已创建）
 app.use((err, req, res, next) => {
-    console.error('管理服务器错误:', err.stack);
-    res.status(500).render('500', { error: err.message, layout: false });
+    console.error('管理服务错误:', err.stack);
+    res.status(500).render('500', {
+        error: err.message,
+        layout: false,
+        nodeEnv: config.app.nodeEnv
+    });
 });
 
-// 启动服务器
 if (require.main === module) {
     app.listen(PORT, () => {
-        console.log(`🎨 Affirm后台管理服务器启动`);
-        console.log(`📊 环境: ${config.app.nodeEnv || 'development'}`);
+        console.log('🚀 Affirm后台管理服务已启动');
+        console.log(`📳 环境: ${config.app.nodeEnv || 'development'}`);
         console.log(`🌐 地址: http://localhost:${PORT}/admin`);
-        console.log(`🔒 认证: 基础HTTP认证 (用户: admin)`);
-        console.log(`🛡️  CORS 允许来源: ${allowedOrigins.join(', ')}`);
+        console.log('🔐 认证: 基础HTTP认证 (用户: admin)');
+        console.log(`🛡️ CORS 允许来源: ${allowedOrigins.join(', ')}`);
     });
 }
 

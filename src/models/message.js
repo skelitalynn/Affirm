@@ -116,7 +116,7 @@ class Message {
         }
 
         if (!semanticSearchDisabledLogged) {
-            console.warn('ℹ️ messages 语义记忆暂未迁移到 LangChain，当前已停用文本语义检索');
+            console.warn('ℹ️ 闭环 v1 已停用 messages 语义检索；长期记忆改由 profiles 维护');
             semanticSearchDisabledLogged = true;
         }
 

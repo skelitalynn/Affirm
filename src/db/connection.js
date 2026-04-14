@@ -29,7 +29,7 @@ function parseDatabaseConfig() {
 class Database {
     constructor() {
         const dbConfig = parseDatabaseConfig();
-        if (process.env.NODE_ENV !== 'test') {
+        if (config.app.nodeEnv !== 'test') {
             console.log('🔧 数据库配置:', {
                 host: dbConfig.host || 'from-url',
                 database: dbConfig.database || 'from-url',
@@ -37,7 +37,7 @@ class Database {
             });
         }
 
-        if (process.env.NODE_ENV === 'test') {
+        if (config.app.nodeEnv === 'test') {
             dbConfig.allowExitOnIdle = true;
         }
         

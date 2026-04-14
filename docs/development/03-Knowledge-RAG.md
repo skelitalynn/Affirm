@@ -4,84 +4,114 @@
 
 当你要改这些内容时：
 
-- 知识新增
-- 知识批量导入
-- LangChain / PGVectorStore
-- chunking
-- knowledge 检索策略
-- metadata 结构
+- Haystack 知识导入
+- 知识切块
+- 检索过滤
+- top-k / 排序
+- 知识管理后台
+- 知识同步状态
 
 ## 2. 先读哪些文件
 
 按顺序读：
 
-1. `src/services/rag/knowledge-vector-store.js`
-2. `src/models/knowledge.js`
-3. `src/admin/routes/knowledge.js`
-4. `src/services/chunking.js`
-5. `src/services/telegram.js`
+1. [Knowledge RAG 架构](../architecture/knowledge-rag-architecture.md)
+2. `src/admin/routes/knowledge.js`
+3. `src/models/knowledge.js`
+4. `src/services/rag/provider.js`
+5. `src/services/rag/haystack-client.js`
+6. `src/services/telegram.js`
+7. `src/services/ai.js`
 
-## 3. 当前写入流程
+## 3. 当前写入流
 
 ### 单条知识
 
 ```text
 Admin form
   -> /admin/knowledge
+  -> normalize payload
   -> Knowledge.create()
-  -> knowledgeVectorStore.addKnowledge()
-  -> PGVectorStore.addDocuments()
+  -> write knowledge_chunks + rag_sync
+  -> ragProvider.upsertKnowledge()
+  -> Haystack indexing pipeline
 ```
 
 ### 批量导入
 
 ```text
 Admin import
-  -> chunkingService.buildKnowledgeItems()
+  -> split / normalize
+  -> add metadata
   -> Knowledge.createBatch()
-  -> knowledgeVectorStore.addKnowledgeBatch()
-  -> PGVectorStore.addDocuments()
+  -> write knowledge_chunks + rag_sync
+  -> ragProvider.upsertKnowledge()
+  -> Haystack indexing pipeline
 ```
 
-## 4. 当前检索流程
+## 4. 当前查询流
 
 ```text
 Telegram userMessage
-  -> Knowledge.semanticSearch()
-  -> similaritySearchWithScore()
-  -> threshold 过滤
-  -> relevantKnowledge
+  -> Knowledge.semanticSearch(query, userId)
+  -> ragProvider.searchKnowledge(query, userId)
+  -> filter(global + user-scoped)
+  -> top-k knowledge chunks
   -> AIService.prepareMessages()
 ```
 
-## 5. 你改不同目标时，应该动哪里
+## 5. 你改不同目标时应该动哪里
 
 | 目标 | 主要文件 |
 |------|----------|
-| Embedding 模式切换 | `src/services/rag/knowledge-vector-store.js` |
-| metadata 规则 | `src/services/rag/knowledge-vector-store.js` + `src/models/knowledge.js` |
-| 检索阈值 / limit | `src/models/knowledge.js` + `src/services/telegram.js` |
-| 导入切分规则 | `src/services/chunking.js` |
-| 后台导入字段 | `src/admin/routes/knowledge.js` |
+| 知识导入字段规范 | `src/admin/routes/knowledge.js` |
+| 本地桥接与同步状态 | `src/models/knowledge.js` |
+| RAG provider 适配 | `src/services/rag/*` |
+| 检索参数 / top-k | `src/services/rag/*` + `src/services/telegram.js` |
+| Prompt 注入格式 | `src/services/ai.js` |
+| 长文切块规则 | 导入链路 / Haystack pipeline |
 
-## 6. 当前最重要的现实约束
+## 6. 当前必须记住的边界
 
-- `knowledge_chunks` 是当前唯一有效的 RAG 表
-- `knowledge` 的向量写入和查询都依赖 LangChain
-- 远程 embedding key 缺失，或远程 embeddings 实际不可用时，只能得到 deterministic fallback
-- `messages` 语义记忆不属于当前 RAG 主线
+- Haystack 只处理外部知识
+- 用户长期记忆不进入 Haystack
+- 运行时检索必须同时查：
+  - `scope = global`
+  - `scope = user AND user_id = current_user`
+- `knowledge_chunks` 是桥接层，不是最终主检索库
 
-## 7. 最小验证方式
+## 7. metadata 最小要求
 
-1. 用后台新增一条知识
-2. 用后台导入一段长文本
-3. 在数据库确认 `knowledge_chunks` 有数据
-4. 看 `metadata` 是否同步到了 `source/user_id`
-5. 给 Bot 发送相关问题，确认回复使用了知识
+每条知识至少带：
 
-## 8. 改这个流程时最容易犯的错
+- `scope`
+- `user_id`
+- `source`
+- `document_id`
+- `chunk_id`
+- `import_batch`
+- `rag_sync`
 
-1. 只改 `Knowledge`，没改 `knowledge-vector-store`
-2. 只改 `metadata`，没考虑旧列兼容
-3. 把问题误判到 `messages` 语义记忆
-4. 没有先确认当前是不是 deterministic fallback
+## 8. v2 相关点
+
+- 后台 Dashboard 会显示 Knowledge RAG 状态
+- `/admin/sync-jobs` 可辅助排查知识同步任务
+- `knowledge_chunks` 仍保留为回填和审计来源
+
+## 9. 最小验证方式
+
+1. 通过后台新增一条全局知识
+2. 通过后台新增一条用户知识
+3. 检查 `rag_sync` 状态
+4. 让对应用户发起相关问题
+5. 确认返回结果同时支持全局和用户私有知识
+6. 如有历史数据，执行 `npm run knowledge:sync`
+
+## 10. 改这条链路时最容易犯的错
+
+1. 只改后台，不改 provider
+2. 只改 provider，不改 prompt 注入
+3. 忘了带 `scope`
+4. 只按 `user_id` 过滤，导致全局知识失效
+5. 把长期记忆错误塞进 Haystack
+6. 只看保存成功，不看同步是否成功

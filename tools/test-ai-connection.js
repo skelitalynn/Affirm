@@ -6,23 +6,13 @@
 
 require('dotenv').config();
 const OpenAI = require('openai');
+const config = require('../src/config');
 
 async function testAIConnection() {
     console.log('🔍 AI连接测试\n');
     
-    // 读取配置
-    const provider = process.env.AI_PROVIDER || 'deepseek';
-    const apiKey = provider === 'claude' 
-        ? process.env.CLAUDE_API_KEY || process.env.OPENAI_API_KEY
-        : process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY;
-    
-    const baseURL = provider === 'claude'
-        ? process.env.CLAUDE_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.aigocode.com/v1'
-        : process.env.DEEPSEEK_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.deepseek.com/v1';
-    
-    const model = provider === 'claude'
-        ? process.env.CLAUDE_MODEL || process.env.MODEL_NAME || 'claude-sonnet-4-5-latest'
-        : process.env.MODEL_NAME || 'deepseek-reasoner';
+    // 读取运行时配置
+    const { provider, apiKey, baseURL, model } = config.ai;
     
     console.log('📊 配置信息:');
     console.log(`   提供商: ${provider}`);
@@ -110,8 +100,9 @@ async function testAIConnection() {
             const endpoints = [
                 baseURL,
                 baseURL.replace('/v1', ''),
-                'https://api.openai.com/v1',
-                'https://api.deepseek.com/v1'
+                provider === 'claude'
+                    ? 'https://api.aigocode.com/v1'
+                    : 'https://api.openai.com/v1'
             ];
             
             for (const endpoint of endpoints) {

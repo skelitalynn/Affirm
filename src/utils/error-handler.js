@@ -1,5 +1,5 @@
 // 统一错误处理框架 - Day 3+ P1增强
-const configManager = require('../config/manager');
+const config = require('../config');
 
 /**
  * 错误类型枚举
@@ -147,7 +147,7 @@ class ErrorHandler {
             maxDelay: 10000  // 10秒
         };
         
-        this.logLevel = configManager.get('app.logLevel', 'info');
+        this.logLevel = config.app.logLevel || 'info';
         this.setupErrorListeners();
     }
     
@@ -326,7 +326,7 @@ class ErrorHandler {
         if (error.message?.includes('database') || error.message?.includes('postgres') || error.message?.includes('connection')) {
             type = ErrorType.DATABASE;
             severity = ErrorSeverity.HIGH;
-        } else if (error.message?.includes('AI') || error.message?.includes('api') || error.message?.includes('openai') || error.message?.includes('deepseek')) {
+        } else if (error.message?.includes('AI') || error.message?.includes('api') || error.message?.includes('openai')) {
             type = ErrorType.AI_SERVICE;
             severity = ErrorSeverity.MEDIUM;
         } else if (error.message?.includes('network') || error.message?.includes('timeout') || error.message?.includes('fetch')) {

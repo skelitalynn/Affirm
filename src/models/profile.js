@@ -1,7 +1,142 @@
 // 用户画像数据模型
 const { db } = require('../db/connection');
 
+function isPlainObject(value) {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeStringArray(value, maxItems = 10) {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
+    return Array.from(new Set(
+        value
+            .map((item) => String(item || '').trim())
+            .filter(Boolean)
+    )).slice(0, maxItems);
+}
+
 class Profile {
+    static buildDefaultMemory() {
+        return {
+            memory_version: 1,
+            summary: '',
+            facts: [],
+            communication_preferences: [],
+            open_loops: [],
+            legacy_preferences: {},
+            last_updated_at: null
+        };
+    }
+
+    static normalizeMemory(preferences) {
+        const defaults = Profile.buildDefaultMemory();
+        if (!isPlainObject(preferences)) {
+            return { ...defaults };
+        }
+
+        const {
+            memory_version,
+            summary,
+            facts,
+            communication_preferences,
+            open_loops,
+            last_updated_at,
+            legacy_preferences,
+            ...rest
+        } = preferences;
+
+        return {
+            memory_version: Number(memory_version) || 1,
+            summary: typeof summary === 'string' ? summary.trim() : '',
+            facts: normalizeStringArray(facts, 12),
+            communication_preferences: normalizeStringArray(communication_preferences, 12),
+            open_loops: normalizeStringArray(open_loops, 12),
+            legacy_preferences: {
+                ...(isPlainObject(legacy_preferences) ? legacy_preferences : {}),
+                ...rest
+            },
+            last_updated_at: typeof last_updated_at === 'string' && last_updated_at.trim()
+                ? last_updated_at.trim()
+                : null
+        };
+    }
+
+    static buildMemoryBlock(profile) {
+        if (!profile) {
+            return '';
+        }
+
+        const memory = Profile.normalizeMemory(profile.preferences);
+        const lines = [];
+
+        if (profile.goals && String(profile.goals).trim()) {
+            lines.push(`- 长期目标: ${String(profile.goals).trim()}`);
+        }
+
+        if (profile.status && String(profile.status).trim()) {
+            lines.push(`- 当前状态: ${String(profile.status).trim()}`);
+        }
+
+        if (memory.summary) {
+            lines.push(`- 用户摘要: ${memory.summary}`);
+        }
+
+        if (memory.facts.length > 0) {
+            lines.push(`- 稳定事实: ${memory.facts.join('；')}`);
+        }
+
+        if (memory.communication_preferences.length > 0) {
+            lines.push(`- 沟通偏好: ${memory.communication_preferences.join('；')}`);
+        }
+
+        if (memory.open_loops.length > 0) {
+            lines.push(`- 待跟进事项: ${memory.open_loops.join('；')}`);
+        }
+
+        const legacyPreferences = Object.keys(memory.legacy_preferences || {}).length > 0
+            ? JSON.stringify(memory.legacy_preferences)
+            : '';
+        if (legacyPreferences) {
+            lines.push(`- 其他历史偏好: ${legacyPreferences}`);
+        }
+
+        return lines.join('\n');
+    }
+
+    static mergeMemory(existingPreferences, patch = {}) {
+        const existing = Profile.normalizeMemory(existingPreferences);
+        const merged = {
+            ...existing,
+            summary: typeof patch.summary === 'string' && patch.summary.trim()
+                ? patch.summary.trim()
+                : existing.summary,
+            facts: Array.from(new Set([
+                ...existing.facts,
+                ...normalizeStringArray(patch.facts, 12)
+            ])).slice(0, 12),
+            communication_preferences: Array.from(new Set([
+                ...existing.communication_preferences,
+                ...normalizeStringArray(patch.communication_preferences, 12)
+            ])).slice(0, 12),
+            open_loops: Array.from(new Set([
+                ...normalizeStringArray(patch.open_loops, 12),
+                ...existing.open_loops
+            ])).slice(0, 12),
+            last_updated_at: new Date().toISOString()
+        };
+
+        if (isPlainObject(patch.legacy_preferences)) {
+            merged.legacy_preferences = {
+                ...existing.legacy_preferences,
+                ...patch.legacy_preferences
+            };
+        }
+
+        return merged;
+    }
+
     /**
      * 创建用户画像
      * @param {Object} profileData - 画像数据
@@ -9,6 +144,11 @@ class Profile {
      */
     static async create(profileData) {
         const { user_id, goals, status, preferences } = profileData;
+        const existing = await this.findByUserId(user_id);
+        if (existing) {
+            return existing;
+        }
+
         const query = `
             INSERT INTO profiles (user_id, goals, status, preferences)
             VALUES ($1, $2, $3, $4)
@@ -16,7 +156,7 @@ class Profile {
         `;
         const preferencesValue = (preferences === undefined || preferences === null)
             ? null
-            : JSON.stringify(preferences);
+            : JSON.stringify(isPlainObject(preferences) ? preferences : preferences);
         const values = [user_id, goals, status, preferencesValue];
         
         try {
@@ -51,7 +191,13 @@ class Profile {
      * @returns {Promise<Object|null>} 画像对象或null
      */
     static async findByUserId(userId) {
-        const query = 'SELECT * FROM profiles WHERE user_id = $1';
+        const query = `
+            SELECT *
+            FROM profiles
+            WHERE user_id = $1
+            ORDER BY updated_at DESC, created_at DESC
+            LIMIT 1
+        `;
         const result = await db.query(query, [userId]);
         return result.rows[0] || null;
     }
@@ -72,7 +218,7 @@ class Profile {
             user_id: userId,
             goals: defaults.goals || '',
             status: defaults.status || 'active',
-            preferences: defaults.preferences || {}
+            preferences: defaults.preferences || Profile.buildDefaultMemory()
         });
     }
 
@@ -86,6 +232,11 @@ class Profile {
      * @returns {Promise<Object>} 更新后的画像
      */
     static async update(userId, updates) {
+        const existing = await this.findByUserId(userId);
+        if (!existing) {
+            throw new Error('用户画像不存在');
+        }
+
         const fields = [];
         const values = [];
         let paramIndex = 1;
@@ -110,19 +261,37 @@ class Profile {
             throw new Error('没有提供更新字段');
         }
 
-        values.push(userId);
+        values.push(existing.id);
         const query = `
             UPDATE profiles 
             SET ${fields.join(', ')}
-            WHERE user_id = $${paramIndex}
+            WHERE id = $${paramIndex}
             RETURNING *
         `;
 
         const result = await db.query(query, values);
-        if (result.rows.length === 0) {
-            throw new Error('用户画像不存在');
-        }
         return result.rows[0];
+    }
+
+    static async applyMemoryPatch(userId, patch = {}, defaults = {}) {
+        const profile = await this.findOrCreate(userId, {
+            status: defaults.status || 'active',
+            goals: defaults.goals || '',
+            preferences: defaults.preferences || Profile.buildDefaultMemory()
+        });
+        const nextGoals = typeof patch.goals === 'string' && patch.goals.trim()
+            ? patch.goals.trim()
+            : profile.goals;
+        const nextStatus = typeof patch.status === 'string' && patch.status.trim()
+            ? patch.status.trim()
+            : (profile.status || defaults.status || 'active');
+        const mergedMemory = Profile.mergeMemory(profile.preferences, patch);
+
+        return this.update(userId, {
+            goals: nextGoals,
+            status: nextStatus,
+            preferences: mergedMemory
+        });
     }
 
     /**

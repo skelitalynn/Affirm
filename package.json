@@ -16,6 +16,7 @@
     "db:migrate": "node scripts/database/migrate.js",
     "db:seed": "node scripts/database/seed.js",
     "db:reset": "node scripts/database/reset.js",
+    "knowledge:sync": "node scripts/sync-knowledge-to-haystack.js",
     "verify": "node tools/verify-environment.js",
     "verify:quick": "./scripts/utils/quick-verify.sh",
     "admin": "node src/admin/server.js",

@@ -19,8 +19,11 @@ async function initialize() {
         console.log(`   Token预览: ${config.telegram.botToken.substring(0, 10)}...${config.telegram.botToken.substring(config.telegram.botToken.length - 4)}`);
     }
     console.log('   AI API Key:', config.ai.apiKey ? '✅ 已配置' : '❌ 未配置');
-    console.log('   AI Provider:', config.ai.provider || 'deepseek');
+    console.log('   AI Provider:', config.ai.provider);
     console.log('   Database URL:', config.database.url ? '✅ 已配置' : '❌ 未配置');
+    console.log('   Admin Password:', config.admin.password ? '✅ 已配置' : '❌ 未配置');
+    console.log('   Haystack URL:', config.haystack.baseURL ? `✅ ${config.haystack.baseURL}` : '⚠️ 未配置（knowledge RAG 将降级为空结果）');
+    console.log('   Memory v2:', config.memory.enabled ? `✅ enabled (recordJobs=${config.memory.recordJobs})` : '⚠️ disabled');
     
     try {
         // 启动Telegram机器人

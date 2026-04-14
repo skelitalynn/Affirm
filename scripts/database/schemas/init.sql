@@ -13,10 +13,10 @@ CREATE TABLE IF NOT EXISTS users (
 -- 用户画像表
 CREATE TABLE IF NOT EXISTS profiles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID UNIQUE REFERENCES users(id) ON DELETE CASCADE,
     goals TEXT,
-    status TEXT,
-    preferences JSONB,
+    status TEXT NOT NULL DEFAULT 'active',
+    preferences JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -46,10 +46,10 @@ CREATE TABLE IF NOT EXISTS knowledge_chunks (
 -- 同步任务表
 CREATE TABLE IF NOT EXISTS sync_jobs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    job_type VARCHAR(50),
+    job_type VARCHAR(50) NOT NULL,
     date_key DATE,
-    status VARCHAR(20) CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
-    details JSONB,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
+    details JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP WITH TIME ZONE
 );
@@ -59,6 +59,8 @@ CREATE INDEX IF NOT EXISTS idx_messages_user_created ON messages(user_id, create
 CREATE INDEX IF NOT EXISTS idx_messages_embedding ON messages USING ivfflat (embedding vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_knowledge_embedding ON knowledge_chunks USING ivfflat (embedding vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_sync_jobs_date ON sync_jobs(date_key);
+CREATE INDEX IF NOT EXISTS idx_sync_jobs_status_created ON sync_jobs(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sync_jobs_job_type_created ON sync_jobs(job_type, created_at DESC);
 
 -- 创建更新时间的触发器函数
 CREATE OR REPLACE FUNCTION update_updated_at_column()

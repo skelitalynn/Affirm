@@ -8,6 +8,7 @@
     <div class="form-group">
         <label for="user_id">User ID（可选，UUID）</label>
         <input type="text" id="user_id" name="user_id" class="form-control" value="<%= knowledge.user_id || '' %>">
+        <small>留空表示全局知识；填写 UUID 表示该知识仅对该用户可检索。</small>
     </div>
 
     <div class="form-group">
@@ -18,6 +19,7 @@
     <div class="form-group">
         <label for="content">内容（content）</label>
         <textarea id="content" name="content" class="form-control" required><%= knowledge.content || '' %></textarea>
+        <small>保存后会写入本地 `knowledge_chunks`，并同步到 Haystack。</small>
     </div>
 
     <div class="action-bar">

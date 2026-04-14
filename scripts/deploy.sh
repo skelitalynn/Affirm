@@ -32,8 +32,8 @@ check_environment() {
         echo -e "${YELLOW}⚠️  TELEGRAM_BOT_TOKEN未设置${NC}"
     fi
     
-    if [ -z "$DEEPSEEK_API_KEY" ] && [ -z "$CLAUDE_API_KEY" ] && [ -z "$OPENAI_API_KEY" ]; then
-        echo -e "${YELLOW}⚠️  未检测到可用AI密钥（DEEPSEEK_API_KEY / CLAUDE_API_KEY / OPENAI_API_KEY）${NC}"
+    if [ -z "$CLAUDE_API_KEY" ] && [ -z "$OPENAI_API_KEY" ]; then
+        echo -e "${YELLOW}⚠️  未检测到可用AI密钥（CLAUDE_API_KEY / OPENAI_API_KEY）${NC}"
     fi
     
     echo -e "${GREEN}✅ 环境检查完成${NC}"

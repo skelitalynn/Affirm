@@ -65,9 +65,7 @@ class KnowledgeVectorStore {
             vectorColumnName: 'embedding',
             metadataColumnName: 'metadata'
         };
-        this.dimensions = parseInt(process.env.EMBEDDING_DIMENSIONS, 10)
-            || config.embedding?.dimensions
-            || 768;
+        this.dimensions = config.embedding?.dimensions || 768;
 
         this.schemaPromise = null;
         this.storePromise = null;
@@ -89,8 +87,8 @@ class KnowledgeVectorStore {
         const aiConfig = config.ai || {};
         const explicitEmbeddingKey = embeddingConfig.apiKey ? embeddingConfig.apiKey.trim() : '';
         const explicitEmbeddingBaseUrl = sanitizeBaseUrl(embeddingConfig.baseURL);
-        const sharedOpenAiKey = process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.trim() : '';
-        const sharedOpenAiBaseUrl = sanitizeBaseUrl(process.env.OPENAI_BASE_URL) || 'https://api.openai.com/v1';
+        const sharedOpenAiKey = embeddingConfig.sharedApiKey ? embeddingConfig.sharedApiKey.trim() : '';
+        const sharedOpenAiBaseUrl = sanitizeBaseUrl(embeddingConfig.sharedBaseURL) || 'https://api.openai.com/v1';
         const embeddingModel = embeddingConfig.model || 'text-embedding-3-small';
 
         if (explicitEmbeddingKey) {
