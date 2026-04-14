@@ -1,25 +1,31 @@
 # Knowledge RAG 架构
 
-**更新日期**：2026-04-10  
-**状态**：Haystack 版知识链路已接入
+**更新日期**：2026-04-14
+**状态**：Haystack 外部知识链路已接入；用户长期记忆召回不在本架构内
 
-本文档只描述“外部知识层”，不讨论用户长期记忆。长期记忆统一放在 `profiles`。
+这份文档只描述“外部知识层”，不描述用户长期记忆。
+当前长期记忆在 `profiles`，未来的历史事件记忆在 `memory_events`，两者都不应被塞进 Haystack。
 
-## 1. 目标边界
+## 1. 先说清边界
 
 Knowledge RAG 只解决三件事：
 
-1. 知识内容导入
-2. 知识内容检索
+1. 外部知识导入
+2. 外部知识检索
 3. 将结果以稳定格式返回给主应用
 
 它不负责：
 
 - 用户长期记忆
+- 用户历史经历召回
 - 原始消息日志
 - 最终回答生成
 
-## 2. 目标组件
+一句话总结：
+
+`Knowledge RAG = 外部知识层，不是用户记忆层`
+
+## 2. 当前组件划分
 
 ### Node 主应用
 
@@ -53,7 +59,33 @@ Knowledge RAG 只解决三件事：
 - 回填来源
 - 审计来源
 
-## 3. 知识文档模型
+## 3. 当前配置口径
+
+当前主链路关于 Knowledge RAG 的配置应按下面理解：
+
+### `HAYSTACK_BASE_URL`
+
+- 配在 `.env`
+- 通过 `src/config.js` 读取
+- 用来告诉 Node 主应用如何访问 Haystack
+
+如果未配置：
+
+- Knowledge RAG 降级为空结果
+- 机器人主回复仍可运行
+
+### `EMBEDDING_API_KEY`
+
+- 也配在 `.env`
+- 但当前主链路不依赖它才能跑通
+- 只有你恢复旧的本地 embedding/pgvector 路线，或者在独立检索侧继续扩展 embedding provider 时，才需要它
+
+当前推荐口径：
+
+- `HAYSTACK_BASE_URL` 是 Knowledge RAG 主链路配置
+- `EMBEDDING_API_KEY` 不是当前 v2 最小闭环必须项
+
+## 4. 知识文档模型
 
 每条知识最少包含：
 
@@ -73,11 +105,11 @@ Knowledge RAG 只解决三件事：
   "source": "admin-import",
   "document_id": "doc-001",
   "chunk_id": "doc-001#03",
-  "import_batch": "admin-import-20260410"
+  "import_batch": "admin-import-20260414"
 }
 ```
 
-## 4. 导入流
+## 5. 当前导入流
 
 ```text
 Admin form / import
@@ -89,7 +121,12 @@ Admin form / import
   -> update metadata.rag_sync
 ```
 
-## 5. 查询流
+说明：
+
+- `knowledge_chunks` 负责桥接和状态记录
+- Haystack 才是实际外部知识检索侧
+
+## 6. 当前查询流
 
 ```text
 Telegram userMessage
@@ -100,7 +137,7 @@ Telegram userMessage
   -> AIService.prepareMessages()
 ```
 
-## 6. 过滤规则
+## 7. 过滤规则
 
 查询时必须同时覆盖两类知识：
 
@@ -109,7 +146,34 @@ Telegram userMessage
 
 这是硬约束。不能只查用户知识，也不能混查所有用户的私有知识。
 
-## 7. 推荐的 Haystack 管道
+## 8. 为什么用户记忆不能放进 Haystack
+
+这是当前文档最容易被写错的地方。
+
+不应该把这些内容导进 Haystack：
+
+- 用户是谁
+- 用户长期目标
+- 用户偏好
+- 用户反复卡点
+- 用户上次承诺了什么
+- 用户最近突破了什么
+
+原因：
+
+1. 这些内容属于“用户记忆”，不是“外部知识”
+2. 这类数据需要可纠错、可覆盖、可人工干预
+3. 权限和隔离要求不同
+4. 生命周期不同
+5. 提示词中的优先级也不同
+
+更准确的分工是：
+
+- `profiles` 保存稳定长期记忆
+- `memory_events` 保存可召回的历史经历
+- `Haystack` 只保存外部知识
+
+## 9. 推荐的 Haystack 管道
 
 ### 写入管道
 
@@ -125,15 +189,22 @@ Telegram userMessage
 - 可选 `AutoMergingRetriever`
 - 可选 `SimilarityRanker`
 
-当前优先级仍是把基础检索跑通，不是先上复杂 hybrid search。
+当前优先级仍然是把“外部知识基础检索”跑通，而不是先把用户记忆也混进来做复杂 hybrid。
 
-## 8. 与长期记忆的关系
+## 10. 与长期记忆的关系
 
-- 用户目标、偏好、待跟进事项不写进 Haystack
-- `profiles` 不用来存知识库 chunk
-- prompt 注入顺序里，`profile memory` 永远在 `knowledge` 前面
+当前和未来都应遵守：
 
-## 9. Node 与 Haystack 的接口边界
+1. 用户目标、偏好、待跟进事项不写进 Haystack
+2. `profiles` 不用来存知识库 chunk
+3. `memory_events` 也不等于知识库 chunk
+4. prompt 注入顺序里，用户记忆应先于外部知识
+
+推荐顺序：
+
+`system -> profile memory -> recalled memory events -> recent messages -> knowledge -> user`
+
+## 11. Node 与 Haystack 的接口边界
 
 主应用和 Haystack 之间只暴露三类接口：
 
@@ -143,10 +214,23 @@ Telegram userMessage
 
 这样业务代码不会直接耦合 Haystack 内部 pipeline 细节。
 
-## 10. 最小验证
+## 12. 未来与 `memory_events` 的关系
+
+如果后续你为 `memory_events` 做向量检索，也不应该把它直接当成 Knowledge RAG 的一个 scope 去混用。
+
+更推荐：
+
+1. `memory_events` 作为独立记忆检索层
+2. `Haystack` 继续作为外部知识层
+3. 在 Node 主应用里统一做 prompt 拼装和优先级控制
+
+这样才能保证“记住用户是谁”和“引用外部知识”是两件不同的事。
+
+## 13. 最小验证
 
 1. 后台新增一条全局知识
 2. 后台新增一条用户知识
 3. 检查 `rag_sync` 状态正确
 4. 发起相关问题，确认命中结果正确
-5. Haystack 不可用时，确认主应用能降级运行
+5. 断开 Haystack 或移除 `HAYSTACK_BASE_URL`
+6. 确认主应用退化为空知识结果但仍能回复
