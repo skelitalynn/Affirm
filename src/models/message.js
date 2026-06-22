@@ -16,6 +16,13 @@ function toVectorSql(embedding) {
 }
 
 class Message {
+    static MEMORY_REFS_JSON_SQL = `
+        CASE
+            WHEN jsonb_typeof(metadata->'memory_refs') = 'array' THEN metadata->'memory_refs'
+            ELSE '[]'::jsonb
+        END
+    `;
+
     /**
      * 创建消息（可选接收外部已生成的向量）
      * @param {Object} messageData - 消息数据
@@ -312,6 +319,91 @@ class Message {
         `;
         const result = await db.query(query, [userId, limit, offset]);
         return result.rows;
+    }
+
+    static async countAssistantMessagesWithMemoryRefs(userId = null) {
+        let query = `
+            SELECT COUNT(*)::int AS count
+            FROM messages
+            WHERE role = 'assistant'
+              AND jsonb_array_length(${Message.MEMORY_REFS_JSON_SQL}) > 0
+        `;
+        const values = [];
+
+        if (userId) {
+            query += ' AND user_id = $1';
+            values.push(userId);
+        }
+
+        const result = await db.query(query, values);
+        return result.rows[0]?.count || 0;
+    }
+
+    static async findAssistantMessagesWithMemoryRefs(options = {}) {
+        const clauses = [
+            `m.role = 'assistant'`,
+            `jsonb_array_length(${Message.MEMORY_REFS_JSON_SQL.replace(/metadata/g, 'm.metadata')}) > 0`
+        ];
+        const values = [];
+        let paramIndex = 1;
+
+        if (options.userId) {
+            clauses.push(`m.user_id = $${paramIndex}`);
+            values.push(String(options.userId || '').trim());
+            paramIndex += 1;
+        }
+
+        const eventId = String(options.eventId || '').trim();
+        if (eventId) {
+            clauses.push(`(m.metadata->'memory_refs') @> $${paramIndex}::jsonb`);
+            values.push(JSON.stringify([{ id: eventId }]));
+            paramIndex += 1;
+        }
+
+        const limit = Math.max(1, Math.min(parseInt(options.limit, 10) || 50, 100));
+        const offset = Math.max(0, parseInt(options.offset, 10) || 0);
+        values.push(limit, offset);
+
+        const result = await db.query(`
+            SELECT
+                m.*,
+                u.username,
+                u.telegram_id,
+                jsonb_array_length(${Message.MEMORY_REFS_JSON_SQL.replace(/metadata/g, 'm.metadata')})::int AS memory_ref_count
+            FROM messages m
+            LEFT JOIN users u ON u.id = m.user_id
+            WHERE ${clauses.join(' AND ')}
+            ORDER BY m.created_at DESC
+            LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+        `, values);
+
+        return result.rows;
+    }
+
+    static async findAssistantMessageWithMemoryRefsById(id) {
+        const result = await db.query(`
+            SELECT
+                m.*,
+                u.username,
+                u.telegram_id,
+                jsonb_array_length(${Message.MEMORY_REFS_JSON_SQL.replace(/metadata/g, 'm.metadata')})::int AS memory_ref_count
+            FROM messages m
+            LEFT JOIN users u ON u.id = m.user_id
+            WHERE m.id = $1
+              AND m.role = 'assistant'
+        `, [id]);
+
+        const row = result.rows[0] || null;
+        if (!row) {
+            return null;
+        }
+
+        const refs = Array.isArray(row?.metadata?.memory_refs) ? row.metadata.memory_refs : [];
+        if (refs.length === 0) {
+            return null;
+        }
+
+        return row;
     }
 
     /**

@@ -1,6 +1,6 @@
 # Knowledge RAG 架构
 
-**更新日期**：2026-04-14
+**更新日期**：2026-04-15
 **状态**：Haystack 外部知识链路已接入；用户长期记忆召回不在本架构内
 
 这份文档只描述“外部知识层”，不描述用户长期记忆。
@@ -35,6 +35,7 @@ Knowledge RAG 只解决三件事：
 - 做最小规范化
 - 调用统一 `ragProvider`
 - 将检索结果传给 `AIService`
+- 通过 `HAYSTACK_BASE_URL` 调用独立 sidecar，而不是在主进程里直接承载 Haystack pipeline
 
 ### Haystack 侧车
 
@@ -84,6 +85,21 @@ Knowledge RAG 只解决三件事：
 
 - `HAYSTACK_BASE_URL` 是 Knowledge RAG 主链路配置
 - `EMBEDDING_API_KEY` 不是当前 v2 最小闭环必须项
+
+### `SERPERDEV_API_KEY`
+
+当前项目默认不需要这个变量。
+
+原因：
+
+1. 它只在 Haystack 的 `SerperDevWebSearch` 这类联网搜索组件中需要
+2. 当前项目的 `Haystack` 只负责“外部知识库检索”
+3. 当前项目不依赖 Serper 做网页搜索，也不把联网搜索作为主链路
+
+因此：
+
+- 不要把 Haystack 官方 quick start 中的 `SERPERDEV_API_KEY` 当成当前项目的必配项
+- 只有未来你显式引入 `SerperDevWebSearch` 或其他联网搜索工具时，才需要额外配置
 
 ## 4. 知识文档模型
 
@@ -177,8 +193,8 @@ Telegram userMessage
 
 ### 写入管道
 
-- `DocumentCleaner`
-- `DocumentSplitter` 或 `HierarchicalDocumentSplitter`
+- 可选 `DocumentCleaner`
+- 谨慎使用 `DocumentSplitter`
 - `SentenceTransformersDocumentEmbedder`
 - `DocumentWriter`
 
@@ -190,6 +206,12 @@ Telegram userMessage
 - 可选 `SimilarityRanker`
 
 当前优先级仍然是把“外部知识基础检索”跑通，而不是先把用户记忆也混进来做复杂 hybrid。
+
+补充约束：
+
+- 当前仓库已经在 Node 导入层完成一次切块
+- 因此 sidecar 第一版不要默认再次把单条 `knowledge_chunks` 裂变成多个文档主键
+- 否则会破坏本地桥接表、同步状态和审计来源的一致性
 
 ## 10. 与长期记忆的关系
 
@@ -214,6 +236,29 @@ Telegram userMessage
 
 这样业务代码不会直接耦合 Haystack 内部 pipeline 细节。
 
+从部署形态上，更准确地说，当前项目期望的是一个独立 sidecar 提供至少以下 HTTP 接口：
+
+- `GET /health`
+- `POST /knowledge/upsert`
+- `POST /knowledge/delete`
+- `POST /knowledge/search`
+
+Node 侧通过 `HAYSTACK_BASE_URL` 和路径配置访问这些接口。
+
+第一版 sidecar 建议只做四件事：
+
+1. 写入文档
+2. 删除文档
+3. 按 metadata 过滤检索
+4. 返回统一结果格式
+
+不要在第一版里同时追求：
+
+- Agent 工具调用
+- 联网搜索
+- 用户记忆检索
+- 复杂 rerank 编排
+
 ## 12. 未来与 `memory_events` 的关系
 
 如果后续你为 `memory_events` 做向量检索，也不应该把它直接当成 Knowledge RAG 的一个 scope 去混用。
@@ -234,3 +279,17 @@ Telegram userMessage
 4. 发起相关问题，确认命中结果正确
 5. 断开 Haystack 或移除 `HAYSTACK_BASE_URL`
 6. 确认主应用退化为空知识结果但仍能回复
+
+## 14. 推荐实现优先级
+
+因为本项目的 `Haystack` 只是外部知识增强层，不是主回复必需项，所以推荐优先级如下：
+
+1. 先保证 `Telegram + AI + profiles + recent messages` 主链路稳定
+2. 再补 `memory_events` 历史事件记忆层
+3. 最后再实现独立 Haystack sidecar
+
+这意味着：
+
+- 当前阶段允许 `HAYSTACK_BASE_URL` 留空
+- 当前阶段允许 Knowledge RAG 退化为空结果
+- 只要主链路可运行，就不应把 Haystack 当成当前阻塞项

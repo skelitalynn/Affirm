@@ -1,6 +1,6 @@
 <% const isEditing = Boolean(isEdit); %>
 
-<% if (error) { %>
+<% if (typeof error !== 'undefined' && error) { %>
     <div class="alert alert-error"><%= error %></div>
 <% } %>
 

@@ -1,6 +1,6 @@
 # 03 Knowledge RAG
 
-**更新日期**：2026-04-14
+**更新日期**：2026-04-15
 **当前状态**：维护的是“外部知识层”，不是“用户长期记忆层”
 
 ## 1. 什么时候看这篇
@@ -106,6 +106,26 @@ Telegram userMessage
 - Knowledge RAG 返回空结果
 - 机器人主回复仍继续运行
 
+这也是当前推荐口径：
+
+- `Haystack` 不是主链路
+- `Haystack` 只是外部知识增强侧车
+- 当前不着急实现时，可以先保持未配置状态
+- 先把 `Telegram + profiles + recent messages + AI` 主链路稳定跑通
+
+### `SERPERDEV_API_KEY`
+
+- 当前项目不需要配置
+- 只有在你显式使用 Haystack 的 `SerperDevWebSearch` 组件时才需要
+- 本项目当前不使用网页搜索工具，也不依赖 Serper 做主检索
+- 不要把 Haystack 官方 quick start 里的 web search 示例，当成当前项目的必配项
+
+更准确地说：
+
+- 当前项目的 `Haystack` 负责“已导入的外部知识检索”
+- 不是“联网搜索”
+- 也不是“Agent 工具调用”
+
 ### `EMBEDDING_API_KEY`
 
 - 也配在 `.env`
@@ -113,6 +133,31 @@ Telegram userMessage
 - 只有在旧 embedding/pgvector 路线或独立 embedding 扩展里才需要
 
 所以当前不要把“没配 `EMBEDDING_API_KEY`”误判成主链路故障。
+
+### 当前推荐的最小配置
+
+当你未来要启用外部知识增强时，Node 主应用侧只需要先配置：
+
+```env
+HAYSTACK_BASE_URL=http://127.0.0.1:8000
+HAYSTACK_API_KEY=
+HAYSTACK_TIMEOUT_MS=10000
+HAYSTACK_HEALTH_PATH=/health
+HAYSTACK_SEARCH_PATH=/knowledge/search
+HAYSTACK_UPSERT_PATH=/knowledge/upsert
+HAYSTACK_DELETE_PATH=/knowledge/delete
+```
+
+当前项目不是在 Node 主进程里直接运行 Haystack SDK。
+当前实现口径是：
+
+```text
+Node 主应用
+  -> 通过 HAYSTACK_BASE_URL 调用独立 Haystack sidecar
+  -> sidecar 负责索引、向量化、过滤、检索
+```
+
+所以真正要做的是“实现并部署一个独立 sidecar”，而不是把官方 quick start 代码直接抄进 `src/`。
 
 ## 8. metadata 最小要求
 
@@ -168,3 +213,35 @@ Knowledge RAG 不能替代这些能力：
 5. 把用户长期记忆错误塞进 Haystack
 6. 把“历史召回做不好”误判成 Knowledge RAG 问题
 7. 只看保存成功，不看同步是否成功
+
+## 13. 低优先级实现建议
+
+因为当前项目里 `Haystack` 只是外部知识层，不是主回复必需项，所以实现优先级应低于：
+
+1. Telegram 主链路稳定性
+2. `profiles` 长期记忆质量
+3. `memory_events` 历史事件记忆层
+4. 后台可观测性与同步状态
+
+更实际的推进方式是：
+
+1. 先允许 `HAYSTACK_BASE_URL` 留空
+2. 等主链路稳定后，再补一个独立的 Haystack sidecar
+3. 先实现最小能力：`upsert / delete / search / health`
+4. 跑通后再考虑 rerank、hybrid retrieval、联网搜索等扩展
+
+## 14. 后续落地时的实现约束
+
+当前仓库已经在 Node 侧做了导入切块。
+因此后续 sidecar 落地时，默认不要再把单条 `knowledge_chunks` 裂变成多个主键文档。
+
+原因：
+
+1. 本地 `knowledge_chunks.id` 目前就是同步到 RAG 的文档 ID
+2. 后台同步状态、重试、删除、审计都依赖这个映射关系
+3. 如果 sidecar 二次切块并改写主键，会让本地桥接层和检索层脱节
+
+更安全的做法是：
+
+- 先按“每条 `knowledge_chunks` = 一个 Haystack 文档”跑通
+- 后续若要做更复杂的层级切块，必须同时重设计本地桥接关系

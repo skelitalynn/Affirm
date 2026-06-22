@@ -3,7 +3,7 @@
  * Affirm项目 - 主入口文件
  * Telegram机器人 + AI助手
  */
-require('dotenv').config();
+require('dotenv').config({ override: true });
 
 
 const TelegramService = require('./services/telegram');

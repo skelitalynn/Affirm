@@ -1,5 +1,9 @@
 // 项目配置文件
-require('dotenv').config();
+require('dotenv').config({ override: true });
+
+if (process.env.JEST_WORKER_ID) {
+    process.env.NODE_ENV = 'test';
+}
 
 function deepFreeze(target) {
     if (!target || typeof target !== 'object' || Object.isFrozen(target)) {
@@ -13,6 +17,34 @@ function deepFreeze(target) {
     });
 
     return target;
+}
+
+function parseGeminiEndpoint(rawBaseURL) {
+    const defaultBaseURL = 'https://api.aigocode.com';
+    const defaultApiVersion = 'v1beta';
+    const normalized = typeof rawBaseURL === 'string'
+        ? rawBaseURL.trim().replace(/\/+$/, '')
+        : '';
+
+    if (!normalized) {
+        return {
+            baseURL: defaultBaseURL,
+            apiVersion: defaultApiVersion
+        };
+    }
+
+    const match = normalized.match(/^(https?:\/\/.+?)\/(v[0-9][a-z0-9.-]*)$/i);
+    if (match) {
+        return {
+            baseURL: match[1],
+            apiVersion: match[2]
+        };
+    }
+
+    return {
+        baseURL: normalized,
+        apiVersion: defaultApiVersion
+    };
 }
 
 const config = {
@@ -50,14 +82,21 @@ const config = {
     
     // AI模型配置 - 支持多提供商，无降级逻辑
     ai: (() => {
-        const supportedProviders = ['claude', 'openai'];
+        const supportedProviders = ['claude', 'openai', 'gemini'];
+        const providerAliases = {
+            aigocode: 'claude',
+            google: 'gemini'
+        };
         const requestedProvider = (process.env.AI_PROVIDER || '').trim().toLowerCase();
-        const provider = supportedProviders.includes(requestedProvider)
-            ? requestedProvider
+        const normalizedRequestedProvider = providerAliases[requestedProvider] || requestedProvider;
+        const geminiEndpoint = parseGeminiEndpoint(process.env.GEMINI_BASE_URL);
+        const provider = supportedProviders.includes(normalizedRequestedProvider)
+            ? normalizedRequestedProvider
             : (
                 process.env.CLAUDE_API_KEY ? 'claude'
                     : process.env.OPENAI_API_KEY ? 'openai'
-                        : 'openai'
+                        : process.env.GEMINI_API_KEY ? 'gemini'
+                            : 'openai'
             );
         
         // 提供商配置映射
@@ -71,11 +110,17 @@ const config = {
                 apiKey: process.env.OPENAI_API_KEY,
                 baseURL: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
                 defaultModel: 'gpt-4'
+            },
+            gemini: {
+                apiKey: process.env.GEMINI_API_KEY,
+                baseURL: geminiEndpoint.baseURL,
+                apiVersion: geminiEndpoint.apiVersion,
+                defaultModel: 'gemini-3-flash-preview'
             }
             // 未来可以添加更多提供商，如gemini
         };
         
-        if (requestedProvider && !supportedProviders.includes(requestedProvider)) {
+        if (requestedProvider && !supportedProviders.includes(normalizedRequestedProvider)) {
             console.warn(`⚠️  不支持的AI提供商: ${requestedProvider}，将自动切换到 ${provider}`);
         }
 
@@ -90,6 +135,8 @@ const config = {
             model = process.env.CLAUDE_MODEL;
         } else if (provider === 'openai' && process.env.OPENAI_MODEL) {
             model = process.env.OPENAI_MODEL;
+        } else if (provider === 'gemini' && process.env.GEMINI_MODEL) {
+            model = process.env.GEMINI_MODEL;
         } else if (process.env.MODEL_NAME) {
             model = process.env.MODEL_NAME; // 向后兼容
         } else {
@@ -100,7 +147,11 @@ const config = {
             provider: provider,
             apiKey: providerConfig.apiKey,
             baseURL: providerConfig.baseURL,
+            apiVersion: providerConfig.apiVersion || null,
             model: model,
+            thinkingBudget: provider === 'gemini'
+                ? Math.max(0, parseInt(process.env.GEMINI_THINKING_BUDGET ?? '0', 10) || 0)
+                : null,
             temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
             maxTokens: parseInt(process.env.AI_MAX_TOKENS) || 1000
         };
@@ -187,6 +238,7 @@ if (!aiConfig.apiKey) {
     console.warn('💡 请根据AI_PROVIDER配置相应的API密钥:');
     console.warn('   - claude: CLAUDE_API_KEY');
     console.warn('   - openai: OPENAI_API_KEY');
+    console.warn('   - gemini: GEMINI_API_KEY');
 }
 
 // 验证 Haystack 配置

@@ -13,6 +13,7 @@ const { healthCheck } = require('../health');
 const Profile = require('../models/profile');
 const Knowledge = require('../models/knowledge');
 const Message = require('../models/message');
+const MemoryEvent = require('../models/memory-event');
 const SyncJob = require('../models/sync-job');
 const ragProvider = require('../services/rag/provider');
 const { messageQueue } = require('../utils/message-queue');
@@ -20,6 +21,7 @@ const authMiddleware = require('./middleware/auth');
 const profilesRouter = require('./routes/profiles');
 const knowledgeRouter = require('./routes/knowledge');
 const syncJobsRouter = require('./routes/sync-jobs');
+const memoryEventsRouter = require('./routes/memory-events');
 
 const app = express();
 const PORT = config.admin.port;
@@ -123,10 +125,11 @@ app.use('/admin', csrfProtection);
 
 app.get('/admin', async (req, res) => {
     try {
-        const [profilesCount, knowledgeCount, messagesCount, syncJobSummary, ragStatus] = await Promise.all([
+        const [profilesCount, knowledgeCount, messagesCount, memoryEventsCount, syncJobSummary, ragStatus] = await Promise.all([
             getSafeCount(Profile),
             getSafeCount(Knowledge),
             getSafeCount(Message),
+            getSafeCount(MemoryEvent),
             getSafeJobSummary(),
             ragProvider.getStatus().catch(() => ({
                 enabled: false,
@@ -135,6 +138,8 @@ app.get('/admin', async (req, res) => {
                 message: 'Haystack 状态获取失败'
             }))
         ]);
+        const memoryHitMessagesCount = await Message.countAssistantMessagesWithMemoryRefs()
+            .catch(() => 0);
         const queueStats = messageQueue.getStats();
 
         res.render('dashboard', {
@@ -145,7 +150,9 @@ app.get('/admin', async (req, res) => {
                 profilesCount,
                 knowledgeCount,
                 messagesCount,
+                memoryEventsCount,
                 syncJobsCount: syncJobSummary.total,
+                memoryHitMessagesCount,
                 queueMode: queueStats.mode || 'uninitialized',
                 ragStatus: ragStatus.enabled ? 'enabled' : (ragStatus.configured ? 'degraded' : 'not_configured')
             },
@@ -172,6 +179,7 @@ app.get('/admin', async (req, res) => {
 app.use('/admin/profiles', profilesRouter);
 app.use('/admin/knowledge', knowledgeRouter);
 app.use('/admin/sync-jobs', syncJobsRouter);
+app.use('/admin/memory-events', memoryEventsRouter);
 
 app.get('/health', async (req, res) => {
     const result = await healthCheck();

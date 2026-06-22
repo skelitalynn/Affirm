@@ -1,0 +1,107 @@
+{
+  "name": "conversation-replay-baseline-v1",
+  "description": "用固定 transcript 回放读链路、prompt 注入和回复利用质量。",
+  "cases": [
+    {
+      "id": "replay-morning-commitment",
+      "telegram_id_seed": 951001,
+      "username": "conversation_replay_target",
+      "profile": {
+        "goals": "稳定晨间节奏",
+        "status": "active",
+        "preferences": {
+          "summary": "最近在重建晨间习惯。",
+          "facts": ["容易在启动前犹豫"],
+          "communication_preferences": ["喜欢温柔直接的提醒"],
+          "open_loops": ["恢复晨间复盘"]
+        }
+      },
+      "recent_messages": [
+        {
+          "role": "user",
+          "content": "我最近总觉得启动的时候很容易打退堂鼓。"
+        },
+        {
+          "role": "assistant",
+          "content": "那我们先把动作缩小一点，让你容易重新开始。"
+        }
+      ],
+      "memory_events": [
+        {
+          "fixture_id": "replay_morning_commitment",
+          "event_type": "commitment",
+          "title": "恢复晨间复盘",
+          "summary": "用户承诺重新恢复晨间复盘，先连续坚持 7 天。",
+          "detail": "她希望先从每天 10 分钟开始，降低启动门槛。",
+          "keywords": ["晨间复盘", "10 分钟", "连续性"],
+          "importance": 0.92,
+          "confidence": 0.9,
+          "happened_at": "2026-04-12T08:00:00.000Z"
+        },
+        {
+          "fixture_id": "replay_visibility_fear",
+          "event_type": "fear_pattern",
+          "title": "害怕公开表达愿望",
+          "summary": "用户在公开表达目标时会担心被别人评价，容易收缩。",
+          "detail": "一想到被熟人看到就会降低行动感和表达欲。",
+          "keywords": ["公开表达", "被评价", "害怕"],
+          "importance": 0.84,
+          "confidence": 0.82,
+          "happened_at": "2026-03-27T08:00:00.000Z"
+        }
+      ],
+      "relevant_knowledge_override": [
+        {
+          "id": "knowledge_restart",
+          "content": "重启习惯时先降低启动门槛，优先保住连续性。",
+          "source": "manual-fixture",
+          "similarity": 0.81
+        }
+      ],
+      "user_message": "你还记得我之前答应过要恢复晨间复盘吗",
+      "assistant_response": "我记得，你前面答应过要把晨间复盘重新捡起来。先不要追求很满，我们还是按每天 10 分钟去保住连续性。",
+      "expected_event_fixture_ids": ["replay_morning_commitment"],
+      "expected_response_patterns": ["晨间复盘", "10 分钟", "连续性"],
+      "disallowed_response_patterns": ["公开表达愿望"]
+    },
+    {
+      "id": "replay-preference-signal",
+      "telegram_id_seed": 951002,
+      "username": "conversation_replay_preference",
+      "profile": {
+        "goals": "稳住执行节奏",
+        "status": "active",
+        "preferences": {
+          "summary": "最近希望提醒方式更稳更轻。",
+          "facts": [],
+          "communication_preferences": ["喜欢温柔直接的提醒"],
+          "open_loops": []
+        }
+      },
+      "recent_messages": [
+        {
+          "role": "assistant",
+          "content": "我会继续陪你把节奏稳住。"
+        }
+      ],
+      "memory_events": [
+        {
+          "fixture_id": "replay_gentle_preference",
+          "event_type": "preference_signal",
+          "title": "偏好温柔直接的提醒方式",
+          "summary": "用户更喜欢温柔但直接的反馈，不喜欢说教和过度施压。",
+          "detail": "提醒她时可以坚定，但不要带评判口吻。",
+          "keywords": ["温柔", "直接", "说教"],
+          "importance": 0.73,
+          "confidence": 0.87,
+          "happened_at": "2026-04-05T08:00:00.000Z"
+        }
+      ],
+      "user_message": "提醒我时继续温柔一点，不要太说教",
+      "assistant_response": "我会继续用温柔但直接的方式提醒你，不会用说教口吻压你，我们就把节奏稳稳地推进。",
+      "expected_event_fixture_ids": ["replay_gentle_preference"],
+      "expected_response_patterns": ["温柔", "直接", "说教"],
+      "disallowed_response_patterns": ["公开表达愿望"]
+    }
+  ]
+}

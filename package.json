@@ -6,10 +6,11 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "test": "jest --coverage",
-    "test:unit": "jest tests/unit --verbose",
-    "test:integration": "jest tests/integration --verbose",
-    "test:coverage": "jest --coverage",
+    "test": "npm run test:unit && npm run test:integration && npm run test:misc",
+    "test:unit": "jest tests/unit --verbose --runInBand",
+    "test:integration": "jest tests/integration --verbose --runInBand",
+    "test:coverage": "jest tests/unit --coverage --runInBand",
+    "test:misc": "jest tests/notion-integration.test.js --runInBand",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write \"src/**/*.js\"",
@@ -19,6 +20,12 @@
     "knowledge:sync": "node scripts/sync-knowledge-to-haystack.js",
     "verify": "node tools/verify-environment.js",
     "verify:quick": "./scripts/utils/quick-verify.sh",
+    "eval:memory:recall": "node tools/evaluate-memory-recall.js --fixture=baseline",
+    "eval:memory:write": "node tools/evaluate-memory-write.js --fixture=baseline",
+    "eval:memory:injection": "node tools/evaluate-memory-injection.js --fixture=baseline",
+    "eval:memory:utilization": "node tools/evaluate-memory-utilization.js --fixture=baseline",
+    "eval:conversation:replay": "node tools/evaluate-conversation-replay.js --fixture=baseline",
+    "eval:degradation": "node tools/evaluate-degradation.js --fixture=baseline",
     "admin": "node src/admin/server.js",
     "admin:dev": "nodemon src/admin/server.js",
     "start:all": "concurrently \"npm start\" \"npm run admin\""
@@ -78,6 +85,10 @@
   },
   "jest": {
     "testEnvironment": "node",
+    "coverageProvider": "v8",
+    "setupFiles": [
+      "<rootDir>/tests/env.setup.js"
+    ],
     "setupFilesAfterEnv": [
       "<rootDir>/tests/setup.js"
     ],

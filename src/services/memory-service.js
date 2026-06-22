@@ -1,10 +1,12 @@
 const Profile = require('../models/profile');
 const SyncJob = require('../models/sync-job');
+const MemoryEventService = require('./memory-event-service');
 const config = require('../config');
 
 class MemoryService {
-    constructor({ aiService } = {}) {
+    constructor({ aiService, memoryEventService } = {}) {
         this.aiService = aiService || null;
+        this.memoryEventService = memoryEventService || new MemoryEventService();
         this.config = config.memory || {
             enabled: true,
             recordJobs: true
@@ -92,7 +94,65 @@ class MemoryService {
         }
     }
 
-    async updateLongTermMemory({ user, username, telegramUserId, userMessage, aiResponse, recentMessages, profile, traceId = null } = {}) {
+    async generateMemoryArtifacts(payload = {}) {
+        if (!this.aiService) {
+            return {
+                profile_patch: null,
+                memory_event_candidates: []
+            };
+        }
+
+        if (typeof this.aiService.generateMemoryArtifacts === 'function') {
+            const artifacts = await this.aiService.generateMemoryArtifacts(payload);
+            return {
+                profile_patch: artifacts?.profile_patch || null,
+                memory_event_candidates: Array.isArray(artifacts?.memory_event_candidates)
+                    ? artifacts.memory_event_candidates
+                    : []
+            };
+        }
+
+        const profilePatch = await this.aiService.generateMemoryPatch(payload);
+        return {
+            profile_patch: profilePatch,
+            memory_event_candidates: []
+        };
+    }
+
+    async saveMemoryEventCandidates({ userId, candidates = [], sourceMessageIds = [], traceId = null, username = null, telegramUserId = null } = {}) {
+        if (!this.memoryEventService || !Array.isArray(candidates) || candidates.length === 0) {
+            return {
+                createdEvents: [],
+                error: null
+            };
+        }
+
+        try {
+            const createdEvents = await this.memoryEventService.saveCandidates({
+                userId,
+                candidates,
+                sourceMessageIds,
+                metadata: {
+                    trace_id: traceId,
+                    username,
+                    telegram_user_id: telegramUserId
+                }
+            });
+
+            return {
+                createdEvents,
+                error: null
+            };
+        } catch (error) {
+            console.warn(`⚠️ 写入 memory_events 失败: ${error.message}`);
+            return {
+                createdEvents: [],
+                error
+            };
+        }
+    }
+
+    async updateLongTermMemory({ user, username, telegramUserId, userMessage, aiResponse, recentMessages, profile, traceId = null, sourceMessageIds = [] } = {}) {
         if (!this.isEnabled()) {
             return {
                 updated: false,
@@ -122,7 +182,7 @@ class MemoryService {
             const normalizedRecentMessages = Array.isArray(recentMessages)
                 ? recentMessages.slice(-this.getContextMessages())
                 : [];
-            const memoryPatch = await this.aiService.generateMemoryPatch({
+            const artifacts = await this.generateMemoryArtifacts({
                 user: {
                     id: user?.id || '',
                     username: username || user?.username || '用户',
@@ -133,39 +193,59 @@ class MemoryService {
                 recentMessages: normalizedRecentMessages,
                 currentMemory: this.buildCurrentMemory(profile)
             });
+            const memoryPatch = artifacts?.profile_patch || null;
+            const memoryEventCandidates = Array.isArray(artifacts?.memory_event_candidates)
+                ? artifacts.memory_event_candidates
+                : [];
 
-            if (!memoryPatch || !memoryPatch.should_update) {
-                await this.completeJob(job, {
-                    ...baseDetails,
-                    changed: false,
-                    result: 'no_update'
+            let updatedProfile = null;
+            let profileUpdated = false;
+
+            if (memoryPatch?.should_update) {
+                updatedProfile = await Profile.applyMemoryPatch(user.id, memoryPatch, {
+                    status: profile?.status || 'active',
+                    goals: profile?.goals || '',
+                    preferences: profile?.preferences || Profile.buildDefaultMemory()
                 });
-
-                return {
-                    updated: false,
-                    patch: memoryPatch,
-                    jobId: job?.id || null
-                };
+                profileUpdated = true;
             }
 
-            const updatedProfile = await Profile.applyMemoryPatch(user.id, memoryPatch, {
-                status: profile?.status || 'active',
-                goals: profile?.goals || '',
-                preferences: profile?.preferences || Profile.buildDefaultMemory()
+            const {
+                createdEvents,
+                error: memoryEventError
+            } = await this.saveMemoryEventCandidates({
+                userId: user?.id,
+                candidates: memoryEventCandidates,
+                sourceMessageIds,
+                traceId,
+                username,
+                telegramUserId
             });
+
+            const changed = profileUpdated || createdEvents.length > 0;
+            const result = memoryEventError
+                ? (changed ? 'updated_with_memory_event_errors' : 'memory_event_write_failed')
+                : (changed ? 'updated' : 'no_update');
 
             await this.completeJob(job, {
                 ...baseDetails,
-                changed: true,
-                result: 'updated',
+                changed,
+                profile_updated: profileUpdated,
+                result,
                 open_loop_count: Array.isArray(memoryPatch.open_loops) ? memoryPatch.open_loops.length : 0,
-                fact_count: Array.isArray(memoryPatch.facts) ? memoryPatch.facts.length : 0
+                fact_count: Array.isArray(memoryPatch?.facts) ? memoryPatch.facts.length : 0,
+                memory_event_candidate_count: memoryEventCandidates.length,
+                memory_event_saved_count: createdEvents.length,
+                ...(memoryEventError ? { memory_event_error_message: memoryEventError.message } : {})
             });
 
             return {
-                updated: true,
+                updated: changed,
                 profile: updatedProfile,
                 patch: memoryPatch,
+                memoryEventCandidates,
+                createdMemoryEvents: createdEvents,
+                memoryEventError: memoryEventError ? memoryEventError.message : null,
                 jobId: job?.id || null
             };
         } catch (error) {

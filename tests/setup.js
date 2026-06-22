@@ -1,12 +1,9 @@
-// 测试环境设置
-require('dotenv').config({ path: '/root/projects/Affirm/.env' });
-
-// 设置测试环境变量
-process.env.NODE_ENV = 'test';
+const dbModulePath = require.resolve('../src/db/connection');
 
 // 模拟控制台输出
 const originalConsoleLog = console.log;
 const originalConsoleError = console.error;
+const waitForResourceSettle = () => new Promise((resolve) => setTimeout(resolve, 250));
 
 // 在测试中抑制控制台输出
 beforeAll(() => {
@@ -14,9 +11,24 @@ beforeAll(() => {
     console.error = jest.fn();
 });
 
-afterAll(() => {
+afterAll(async () => {
     console.log = originalConsoleLog;
     console.error = originalConsoleError;
+
+    if (require.cache[dbModulePath]) {
+        try {
+            const { db } = require(dbModulePath);
+            if (db && typeof db.close === 'function') {
+                await db.close();
+            }
+        } catch (error) {
+            // 忽略测试清理错误，避免掩盖断言失败。
+        } finally {
+            delete require.cache[dbModulePath];
+        }
+    }
+
+    await waitForResourceSettle();
 });
 
 // 测试超时设置

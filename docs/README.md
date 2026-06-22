@@ -1,82 +1,74 @@
 # Affirm 文档入口
 
-**更新日期**：2026-04-14
-**当前状态**：v2 最小闭环已可运行；长期记忆目标架构已重新定义，但尚未全部实现。
+**更新日期**：2026-06-22  
+**当前状态**：高层项目知识已经收口到 `docs/` 顶层 Harness 文档；`architecture/`、`development/` 和 `reports/` 只承担技术深挖或历史追溯，不再并行维护第二套项目说明书。
 
-## 当前文档口径
+## 1. 先看这 6 份
 
-当前文档不再把“当前代码已经实现的能力”和“项目希望达到的最终效果”混在一起，而是明确区分两层：
+第一次接手项目，优先读下面这些：
 
-1. 当前实现
-   - `messages`：原始日志与最近上下文
-   - `profiles`：稳定长期记忆
-   - `Haystack`：外部知识
-   - `MemoryService` / `sync_jobs` / `trace`：工程治理层
+1. [架构与产品边界](ARCHITECTURE.md)
+2. [开发与启动](DEVELOPMENT.md)
+3. [测试与完成定义](TESTING.md)
+4. [当前进度](PROGRESS.md)
+5. [关键决策](DECISIONS.md)
+6. [功能状态](FEATURES.json)
 
-2. 目标效果
-   - 机器人稳定记住用户身份、目标、偏好、阻碍和承诺
-   - 机器人能从大量历史内容中召回相关经历
-   - 用户长期记忆和外部知识分别处理，不相互污染
-   - 记忆系统支持后续 hybrid retrieval、摘要、评估和后台治理
+## 2. 按问题查
 
-## 第一次接手项目先看
+| 你现在要解决什么 | 去看哪里 |
+|---|---|
+| 这个项目到底要做什么、哪些该保留到重建版 | [架构与产品边界](ARCHITECTURE.md) |
+| 现在这套系统是怎么分层的 | [架构与产品边界](ARCHITECTURE.md) |
+| 环境、配置、启动、自检 | [开发与启动](DEVELOPMENT.md)、[环境启动与自检](development/01-环境启动与自检.md) |
+| Telegram 主链路、prompt、trace | [Telegram 对话链路](development/02-Telegram-对话链路.md) |
+| Haystack 和外部知识 | [Knowledge RAG](development/03-Knowledge-RAG.md)、[Knowledge RAG 架构](architecture/knowledge-rag-architecture.md) |
+| 数据库和迁移 | [数据库与迁移](development/05-数据库与迁移.md)、[数据库设计](database/数据库设计.md) |
+| 测试、验收、eval 怎么跑 | [测试与完成定义](TESTING.md) |
+| 长期记忆目标架构 | [分层上下文管理架构](architecture/layered-context-management-architecture.md)、[显化导师长期记忆架构](architecture/manifest-coach-memory-architecture.md) |
+| `memory_events` 评估、排序和治理 | [memory_events 评估排序与治理](development/09-memory-events-评估排序与治理.md) |
+| eval 方法与发布前验证思路 | [AI Agent Evals 方法与落地](development/10-AI-Agent-Evals-方法与落地.md) |
+| 当前仓库真实状态和下一步 | [当前进度](PROGRESS.md) |
+| 为什么文档这样收口 | [关键决策](DECISIONS.md) |
 
-1. [项目概述](project/项目概述.md)
-2. [显化导师长期记忆架构](architecture/manifest-coach-memory-architecture.md)
-3. [闭环 v2 架构](architecture/closed-loop-v2-architecture.md)
-4. [系统架构](architecture/system-architecture.md)
-5. [数据库设计](database/数据库设计.md)
+## 3. 建议阅读顺序
 
-## 按目标阅读
+### 第一次接手项目
 
-| 目标 | 文档 |
-|------|------|
-| 快速理解项目和边界 | [项目概述](project/项目概述.md) |
-| 理解产品目标中的长期记忆效果 | [显化导师长期记忆架构](architecture/manifest-coach-memory-architecture.md) |
-| 理解 v2 当前交付和下一阶段差距 | [闭环 v2 架构](architecture/closed-loop-v2-architecture.md) |
-| 理解整体系统组成 | [系统架构](architecture/system-architecture.md) |
-| 理解长期记忆升级实施顺序 | [长期记忆升级路线](development/07-长期记忆升级路线.md) |
-| 维护知识检索与 Haystack 集成 | [Knowledge RAG](development/03-Knowledge-RAG.md) |
-| 维护 Telegram 主链路 | [Telegram 对话链路](development/02-Telegram-对话链路.md) |
-| 维护后台管理面 | [Admin 后台](development/04-Admin-后台.md) |
-| 改数据库或迁移 | [数据库与迁移](development/05-数据库与迁移.md) |
-| 准备测试与交付 | [测试与交付](development/06-测试与交付.md) |
-| 准备面试表达 | [面试项目说明](project/面试项目说明.md) |
+1. [架构与产品边界](ARCHITECTURE.md)
+2. [开发与启动](DEVELOPMENT.md)
+3. [当前进度](PROGRESS.md)
+4. [测试与完成定义](TESTING.md)
+5. [Telegram 对话链路](development/02-Telegram-对话链路.md)
+6. [memory_events 评估排序与治理](development/09-memory-events-评估排序与治理.md)
 
-## 文档结构
+### 准备重建 `v3`
 
-```text
-docs/
-├── README.md
-├── architecture/
-│   ├── closed-loop-v1-architecture.md
-│   ├── closed-loop-v2-architecture.md
-│   ├── knowledge-rag-architecture.md
-│   ├── manifest-coach-memory-architecture.md
-│   └── system-architecture.md
-├── database/
-│   └── 数据库设计.md
-├── development/
-│   ├── 00-开发总流程.md
-│   ├── 01-环境启动与自检.md
-│   ├── 02-Telegram-对话链路.md
-│   ├── 03-Knowledge-RAG.md
-│   ├── 04-Admin-后台.md
-│   ├── 05-数据库与迁移.md
-│   ├── 06-测试与交付.md
-│   └── 07-长期记忆升级路线.md
-└── project/
-    ├── 项目概述.md
-    └── 面试项目说明.md
-```
+1. [架构与产品边界](ARCHITECTURE.md)
+2. [分层上下文管理架构](architecture/layered-context-management-architecture.md)
+3. [显化导师长期记忆架构](architecture/manifest-coach-memory-architecture.md)
+4. [长期记忆升级路线](development/07-长期记忆升级路线.md)
+5. [memory_events 评估排序与治理](development/09-memory-events-评估排序与治理.md)
+6. [当前进度](PROGRESS.md)
 
-## 当前需要记住的几件事
+## 4. 目录口径
 
-- 业务入口是 `src/index.js`
-- 后台入口是 `src/admin/server.js`
-- 配置入口只有 `src/config.js`
-- v2 已接入的关键模块是 `src/services/memory-service.js`、`src/services/conversation-trace.js`、`src/models/sync-job.js`
-- 运行时 Knowledge RAG 走 `src/services/rag/provider.js`
-- `knowledge_chunks` 是桥接层，不是最终运行时检索主库
-- 当前还没有独立的“用户历史记忆召回层”
-- 下一阶段主线不是恢复旧 `messages` 语义检索，而是新增 `memory_events + hybrid recall`
+当前 `docs/` 的职责很简单：
+
+1. 顶层文档是唯一高层项目知识源
+2. `architecture/` 保留专题架构设计
+3. `development/` 保留模块级维护文档
+4. `reports/` 只保留历史验证和阶段报告
+
+## 5. Harness 路由
+
+当前仓库使用 `harness-adopter` 的增量接入方式维护 Agent 工作流。
+
+如需查看 Harness 状态，优先看：
+
+1. [架构与产品边界](ARCHITECTURE.md)
+2. [当前进度](PROGRESS.md)
+3. [关键决策](DECISIONS.md)
+4. [开发与启动](DEVELOPMENT.md)
+5. [测试与完成定义](TESTING.md)
+6. [功能状态](FEATURES.json)

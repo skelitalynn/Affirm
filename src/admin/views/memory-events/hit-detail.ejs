@@ -1,0 +1,84 @@
+<section class="panel">
+    <h3>Assistant 回复</h3>
+    <ul class="meta-list">
+        <li><strong>Message ID：</strong><code><%= message.id %></code></li>
+        <li><strong>User：</strong><%= message.username || '-' %> / <code><%= message.user_id %></code></li>
+        <li><strong>Trace ID：</strong><code><%= message?.metadata?.trace_id || '-' %></code></li>
+        <li><strong>命中数：</strong><%= message.memory_ref_count || (message?.metadata?.memory_refs?.length || 0) %></li>
+        <li><strong>Prompt 已注入 recalled memory：</strong><%= message?.metadata?.generation?.recalled_memory_in_prompt ? 'true' : 'false' %></li>
+        <li><strong>时间：</strong><%= new Date(message.created_at).toLocaleString('zh-CN') %></li>
+    </ul>
+    <div class="form-group">
+        <label>回复内容</label>
+        <pre class="pre-wrap"><%= message.content %></pre>
+    </div>
+</section>
+
+<section class="panel">
+    <h3>本轮命中的历史事件</h3>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>引用 ID</th>
+                <th>标题</th>
+                <th>类型</th>
+                <th>命中分数</th>
+                <th>当前状态</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            <% if (memoryRefDetails && memoryRefDetails.length > 0) { %>
+                <% memoryRefDetails.forEach(item => { %>
+                    <tr>
+                        <td><code><%= item.ref.id || '-' %></code></td>
+                        <td>
+                            <div><strong><%= item.ref.title || item.event?.title || '-' %></strong></div>
+                            <% if (item.event?.summary) { %>
+                                <div class="table-preview"><%= item.event.summary %></div>
+                            <% } %>
+                        </td>
+                        <td><%= item.ref.event_type || item.event?.event_type || '-' %></td>
+                        <td><%= item.ref.final_score ?? '-' %></td>
+                        <td>
+                            <% if (item.event) { %>
+                                <span class="status-badge status-completed">exists</span>
+                            <% } else { %>
+                                <span class="status-badge status-failed">deleted</span>
+                            <% } %>
+                        </td>
+                        <td>
+                            <% if (item.event) { %>
+                                <a href="/admin/memory-events/<%= item.event.id %>/edit" class="btn btn-sm btn-edit">
+                                    <i class="fas fa-edit"></i> 编辑事件
+                                </a>
+                            <% } else { %>
+                                <span class="text-muted">已删除</span>
+                            <% } %>
+                        </td>
+                    </tr>
+                <% }) %>
+            <% } else { %>
+                <tr>
+                    <td colspan="6" class="text-center">没有命中记录</td>
+                </tr>
+            <% } %>
+        </tbody>
+    </table>
+</section>
+
+<section class="panel">
+    <h3>原始 metadata</h3>
+    <pre class="pre-wrap"><%= JSON.stringify(message.metadata || {}, null, 2) %></pre>
+</section>
+
+<div class="action-bar">
+    <a href="/admin/memory-events/hits" class="btn btn-secondary">
+        <i class="fas fa-arrow-left"></i> 返回命中回复列表
+    </a>
+    <% if (message.user_id) { %>
+        <a href="/admin/memory-events?user_id=<%= encodeURIComponent(message.user_id) %>" class="btn btn-secondary">
+            <i class="fas fa-bookmark"></i> 查看该用户的 Memory Events
+        </a>
+    <% } %>
+</div>

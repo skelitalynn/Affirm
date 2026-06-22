@@ -8,6 +8,7 @@ const Profile = require('../models/profile');
 const AIService = require('./ai');
 const NotionService = require('./notion');
 const MemoryService = require('./memory-service');
+const MemoryRetrievalService = require('./memory-retrieval-service');
 const {
     createTraceId,
     buildUserMessageMetadata,
@@ -33,6 +34,7 @@ class TelegramService {
         this.bot = null;
         this.aiService = null;
         this.memoryService = null;
+        this.memoryRetrievalService = null;
         this.notionService = null; // Day 4: Notion归档服务
         this.isRunning = false;
         this.webhookServer = null;   // Phase 2: Webhook HTTP 服务器
@@ -51,6 +53,7 @@ class TelegramService {
         this.aiService = new AIService(this.config.ai);
         await this.aiService.initialize();
         this.memoryService = new MemoryService({ aiService: this.aiService });
+        this.memoryRetrievalService = new MemoryRetrievalService();
 
         // 初始化Notion归档服务（Day 4）
         this.notionService = new NotionService();
@@ -140,7 +143,8 @@ class TelegramService {
                 capabilities: {
                     knowledgeSearch: ragStatus.enabled ? 'enabled' : 'degraded',
                     semanticMemory: 'disabled',
-                    longTermMemory: 'profiles'
+                    longTermMemory: 'profiles + memory_events',
+                    historicalRecall: 'enabled'
                 }
             };
 
@@ -182,18 +186,29 @@ class TelegramService {
 
     async loadConversationContext(user, username, telegramUserId, userMessage, excludedMessageId = null) {
         const contextLimit = config.telegram.contextLimit;
+        const memoryRecallPromise = this.memoryRetrievalService
+            ? this.memoryRetrievalService.searchRelevantEvents({
+                userId: user.id,
+                queryText: userMessage,
+                limit: 5
+            }).catch((memoryError) => {
+                console.warn('⚠️ memory_events 检索失败，已降级为空结果:', memoryError.message);
+                return [];
+            })
+            : Promise.resolve([]);
         const knowledgePromise = Knowledge.semanticSearch(userMessage, user.id, 5, 0.6)
             .catch((ragError) => {
                 console.warn('⚠️ knowledge RAG 检索失败，使用纯时序上下文:', ragError.message);
                 return [];
             });
 
-        const [profile, recentMessages, relevantKnowledge] = await Promise.all([
+        const [profile, recentMessages, recalledMemoryEvents, relevantKnowledge] = await Promise.all([
             Profile.findOrCreate(user.id, {
                 status: 'active',
                 preferences: Profile.buildDefaultMemory()
             }),
             Message.getRecentMessages(user.id, contextLimit),
+            memoryRecallPromise,
             knowledgePromise
         ]);
 
@@ -202,6 +217,9 @@ class TelegramService {
             : recentMessages;
 
         console.log(`📊 获取到最近 ${filteredRecentMessages.length} 条消息作为短期上下文（限制: ${contextLimit}）`);
+        if (recalledMemoryEvents.length > 0) {
+            console.log(`🧠 memory_events 召回 ${recalledMemoryEvents.length} 条历史事件`);
+        }
         if (relevantKnowledge.length > 0) {
             console.log(`📚 Haystack 检索到 ${relevantKnowledge.length} 个相关知识片段`);
         }
@@ -210,11 +228,15 @@ class TelegramService {
             profile,
             profileMemory: Profile.buildMemoryBlock(profile),
             recentMessages: filteredRecentMessages,
+            recalledMemoryEvents,
+            recalledMemoryBlock: this.memoryRetrievalService
+                ? this.memoryRetrievalService.buildPromptBlock(recalledMemoryEvents, 5)
+                : '',
             relevantKnowledge
         };
     }
 
-    async updateProfileMemoryAfterReply({ user, username, telegramUserId, userMessage, aiResponse, recentMessages, profile, traceId = null }) {
+    async updateProfileMemoryAfterReply({ user, username, telegramUserId, userMessage, aiResponse, recentMessages, profile, traceId = null, sourceMessageIds = [] }) {
         if (!this.memoryService) {
             return null;
         }
@@ -228,7 +250,8 @@ class TelegramService {
                 aiResponse,
                 recentMessages,
                 profile,
-                traceId
+                traceId,
+                sourceMessageIds
             });
 
             if (result?.updated) {
@@ -497,12 +520,14 @@ class TelegramService {
                 traceId,
                 profileMemory: conversationContext.profileMemory,
                 recentMessages: conversationContext.recentMessages,
+                recalledMemoryEvents: conversationContext.recalledMemoryEvents,
+                recalledMemoryBlock: conversationContext.recalledMemoryBlock,
                 relevantKnowledge: conversationContext.relevantKnowledge
             };
 
             // 5. 生成AI回复
             let aiResponse;
-            if (this.aiService.client) {
+            if (this.aiService.isAvailable()) {
                 aiResponse = await this.aiService.generateResponse(context);
                 console.log(`🤖 AI回复生成完成 [${aiResponse.length}字符]`);
             } else {
@@ -526,9 +551,7 @@ class TelegramService {
             console.log(`💾 AI回复已保存 [ID: ${savedAiMessage.id}]`);
 
             // 7. 发送回复给用户
-            await this.bot.sendMessage(chatId, aiResponse, {
-                parse_mode: 'HTML'
-            });
+            await this.bot.sendMessage(chatId, aiResponse);
 
             console.log(`📤 回复已发送给用户 [${username}:${userId}]`);
 
@@ -540,7 +563,8 @@ class TelegramService {
                 aiResponse,
                 recentMessages: conversationContext.recentMessages,
                 profile: conversationContext.profile,
-                traceId
+                traceId,
+                sourceMessageIds: [savedUserMessage.id, savedAiMessage.id]
             }).catch((memoryError) => {
                 console.warn(`⚠️ 异步更新长期记忆失败 [${username}:${userId}]: ${memoryError.message}`);
             });

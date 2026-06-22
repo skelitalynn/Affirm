@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "features": [
+    {
+      "id": "F-003",
+      "behavior": "高层项目文档迁移到顶层 Harness 文档，隔离派生表达材料，并删除重复知识源",
+      "state": "passing",
+      "verification": [
+        "python3 scripts/harness/doctor.py",
+        "python3 scripts/harness/verify_docs_layout.py"
+      ],
+      "evidence": ".harness/evidence/F-003/20260622T032328Z/result.json",
+      "blocked_reason": null
+    }
+  ]
+}

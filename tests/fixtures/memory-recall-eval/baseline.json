@@ -1,0 +1,161 @@
+{
+  "name": "memory-recall-baseline-v1",
+  "description": "固定的长期记忆召回评估样本，用于验证 recall、rerank 和 user isolation。",
+  "users": [
+    {
+      "label": "target",
+      "username": "memory_eval_target",
+      "telegram_id_seed": 910001,
+      "events": [
+        {
+          "fixture_id": "target_morning_commitment",
+          "event_type": "commitment",
+          "title": "恢复晨间复盘",
+          "summary": "用户承诺重新恢复晨间复盘，先连续坚持 7 天。",
+          "detail": "她希望先从每天 10 分钟开始，降低启动门槛。",
+          "keywords": ["晨间复盘", "承诺", "习惯"],
+          "importance": 0.92,
+          "confidence": 0.9,
+          "happened_at": "2026-04-12T08:00:00.000Z"
+        },
+        {
+          "fixture_id": "target_perfectionism_setback",
+          "event_type": "setback",
+          "title": "被完美主义卡住",
+          "summary": "用户一想到开始执行就容易被完美主义和拖延卡住。",
+          "detail": "尤其在想把计划做得很完整的时候，会明显延后启动。",
+          "keywords": ["拖延", "完美主义", "启动困难"],
+          "importance": 0.88,
+          "confidence": 0.91,
+          "happened_at": "2026-04-08T08:00:00.000Z"
+        },
+        {
+          "fixture_id": "target_gentle_preference",
+          "event_type": "preference_signal",
+          "title": "偏好温柔直接的提醒方式",
+          "summary": "用户更喜欢温柔但直接的反馈，不喜欢说教和过度施压。",
+          "detail": "提醒她时可以坚定，但不要带评判口吻。",
+          "keywords": ["偏好", "语气", "提醒方式"],
+          "importance": 0.73,
+          "confidence": 0.87,
+          "happened_at": "2026-04-05T08:00:00.000Z"
+        },
+        {
+          "fixture_id": "target_visibility_fear",
+          "event_type": "fear_pattern",
+          "title": "害怕公开表达愿望",
+          "summary": "用户在公开表达目标时会担心被别人评价，容易收缩。",
+          "detail": "一想到被熟人看到就会降低行动感和表达欲。",
+          "keywords": ["害怕", "被评价", "表达"],
+          "importance": 0.84,
+          "confidence": 0.82,
+          "happened_at": "2026-03-27T08:00:00.000Z"
+        },
+        {
+          "fixture_id": "target_journal_old",
+          "event_type": "commitment",
+          "title": "旧的显化日记承诺",
+          "summary": "用户之前承诺每天写显化日记，但后来中断了。",
+          "detail": "这条旧承诺更完整，也更正式。",
+          "keywords": ["显化日记", "承诺", "写作"],
+          "importance": 0.98,
+          "confidence": 0.98,
+          "happened_at": "2025-12-01T08:00:00.000Z"
+        },
+        {
+          "fixture_id": "target_journal_recent",
+          "event_type": "commitment",
+          "title": "最近重启显化日记",
+          "summary": "用户最近重新开始写显化日记，希望这次先保住连续性。",
+          "detail": "新的目标不是写很多，而是每天留下最小一条记录。",
+          "keywords": ["显化日记", "重启", "连续性"],
+          "importance": 0.75,
+          "confidence": 0.85,
+          "happened_at": "2026-04-10T08:00:00.000Z"
+        },
+        {
+          "fixture_id": "target_sleep_progress",
+          "event_type": "goal_progress",
+          "title": "睡眠作息有进展",
+          "summary": "用户上周已经连续三天在 23:30 前睡觉，状态更稳。",
+          "detail": "她觉得情绪和执行感都变好了。",
+          "keywords": ["睡眠", "作息", "进展"],
+          "importance": 0.69,
+          "confidence": 0.8,
+          "happened_at": "2026-04-09T08:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "label": "other",
+      "username": "memory_eval_other",
+      "telegram_id_seed": 910002,
+      "events": [
+        {
+          "fixture_id": "other_morning_commitment",
+          "event_type": "commitment",
+          "title": "另一个用户的晨间复盘",
+          "summary": "这个用户也说过要恢复晨间复盘。",
+          "detail": "用于验证 user isolation，不应被错误召回。",
+          "keywords": ["晨间复盘", "承诺"],
+          "importance": 0.95,
+          "confidence": 0.95,
+          "happened_at": "2026-04-13T08:00:00.000Z"
+        },
+        {
+          "fixture_id": "other_perfectionism_setback",
+          "event_type": "setback",
+          "title": "另一个用户的拖延问题",
+          "summary": "这个用户同样有完美主义和拖延的问题。",
+          "detail": "用于验证 user isolation，不应被错误召回。",
+          "keywords": ["拖延", "完美主义"],
+          "importance": 0.9,
+          "confidence": 0.88,
+          "happened_at": "2026-04-11T08:00:00.000Z"
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "morning-commitment",
+      "user_label": "target",
+      "query": "你还记得我之前答应过要恢复晨间复盘吗",
+      "limit": 3,
+      "expected_event_fixture_ids": ["target_morning_commitment"],
+      "expected_top_event_fixture_id": "target_morning_commitment"
+    },
+    {
+      "id": "perfectionism-setback",
+      "user_label": "target",
+      "query": "我一开始执行就会被完美主义和拖延卡住",
+      "limit": 3,
+      "expected_event_fixture_ids": ["target_perfectionism_setback"],
+      "expected_top_event_fixture_id": "target_perfectionism_setback"
+    },
+    {
+      "id": "gentle-preference",
+      "user_label": "target",
+      "query": "提醒我时请继续温柔一点，不要太说教",
+      "limit": 3,
+      "expected_event_fixture_ids": ["target_gentle_preference"],
+      "expected_top_event_fixture_id": "target_gentle_preference"
+    },
+    {
+      "id": "journal-recency",
+      "user_label": "target",
+      "query": "我最近重新开始写显化日记，但还是怕断掉",
+      "limit": 3,
+      "expected_event_fixture_ids": ["target_journal_recent", "target_journal_old"],
+      "expected_top_event_fixture_id": "target_journal_recent"
+    },
+    {
+      "id": "visibility-fear",
+      "user_label": "target",
+      "query": "我现在还是会害怕别人评价我表达出来的愿望",
+      "limit": 3,
+      "expected_event_fixture_ids": ["target_visibility_fear"],
+      "expected_top_event_fixture_id": "target_visibility_fear"
+    }
+  ]
+}

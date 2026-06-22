@@ -38,6 +38,9 @@ class Database {
         }
 
         if (config.app.nodeEnv === 'test') {
+            dbConfig.max = Math.min(Number(dbConfig.max) || 20, 2);
+            dbConfig.min = 0;
+            dbConfig.idleTimeoutMillis = Math.min(Number(dbConfig.idleTimeoutMillis) || 30000, 1000);
             dbConfig.allowExitOnIdle = true;
         }
         

@@ -17,6 +17,22 @@ function normalizeStringArray(value, maxItems = 10) {
     )).slice(0, maxItems);
 }
 
+function normalizeStatusValue(status, fallback = 'active') {
+    if (typeof status === 'string' && status.trim()) {
+        return status.trim();
+    }
+
+    return fallback;
+}
+
+function serializePreferences(preferences, fallback = {}) {
+    const normalizedPreferences = preferences === undefined || preferences === null
+        ? fallback
+        : preferences;
+
+    return JSON.stringify(isPlainObject(normalizedPreferences) ? normalizedPreferences : normalizedPreferences);
+}
+
 class Profile {
     static buildDefaultMemory() {
         return {
@@ -154,10 +170,12 @@ class Profile {
             VALUES ($1, $2, $3, $4)
             RETURNING *
         `;
-        const preferencesValue = (preferences === undefined || preferences === null)
-            ? null
-            : JSON.stringify(isPlainObject(preferences) ? preferences : preferences);
-        const values = [user_id, goals, status, preferencesValue];
+        const values = [
+            user_id,
+            goals,
+            normalizeStatusValue(status),
+            serializePreferences(preferences)
+        ];
         
         try {
             const result = await db.query(query, values);
@@ -246,9 +264,12 @@ class Profile {
                 throw new Error(`不允许更新字段: ${key}`);
             }
             if (value !== undefined) {
-                if (key === 'preferences' && typeof value === 'object') {
+                if (key === 'preferences') {
                     fields.push(`${key} = $${paramIndex}`);
-                    values.push(JSON.stringify(value));
+                    values.push(serializePreferences(value));
+                } else if (key === 'status') {
+                    fields.push(`${key} = $${paramIndex}`);
+                    values.push(normalizeStatusValue(value, existing.status || 'active'));
                 } else {
                     fields.push(`${key} = $${paramIndex}`);
                     values.push(value);

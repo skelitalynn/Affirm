@@ -1,0 +1,150 @@
+{
+  "name": "memory-write-baseline-v1",
+  "description": "验证长期记忆写入、候选过滤、局部失败收口和 sync_jobs 记录。",
+  "cases": [
+    {
+      "id": "commitment-profile-update",
+      "recent_messages": [
+        {
+          "role": "user",
+          "content": "我最近总觉得执行感断断续续的。"
+        },
+        {
+          "role": "assistant",
+          "content": "我们先把目标缩小到最容易重新启动的版本。"
+        }
+      ],
+      "initial_profile": {
+        "goals": "稳住日常节奏",
+        "status": "active",
+        "preferences": {
+          "summary": "最近在重建执行感。",
+          "facts": ["容易在开始阶段拖延"],
+          "communication_preferences": [],
+          "open_loops": []
+        }
+      },
+      "user_message": "这周我想重新开始写显化日记，而且你提醒我的时候请温柔一点。",
+      "ai_response": "可以先从每天一句最小记录开始，这样更容易保住连续性。",
+      "mock_artifacts": {
+        "profile_patch": {
+          "should_update": true,
+          "summary": "用户正在尝试重新建立显化日记习惯。",
+          "goals": "稳定恢复显化日记",
+          "status": "active",
+          "facts": ["最近重新开始写显化日记"],
+          "communication_preferences": ["更喜欢温柔直接的提醒"],
+          "open_loops": ["连续写 7 天显化日记"]
+        },
+        "memory_event_candidates": [
+          {
+            "event_type": "commitment",
+            "title": "重新开始写显化日记",
+            "summary": "用户承诺这周重新开始写显化日记，先保住连续性。",
+            "detail": "她想先从每天一句最小记录开始。",
+            "keywords": ["显化日记", "承诺", "连续性"],
+            "importance": 0.9,
+            "confidence": 0.91
+          }
+        ]
+      },
+      "expected_profile": {
+        "should_update": true,
+        "goals_equals": "稳定恢复显化日记",
+        "summary_contains": ["显化日记习惯"],
+        "facts_contains": ["显化日记"],
+        "communication_preferences_contains": ["温柔直接"],
+        "open_loops_contains": ["7 天显化日记"]
+      },
+      "expected_memory_events": [
+        {
+          "event_type": "commitment",
+          "title_contains": "显化日记",
+          "summary_contains": "连续性"
+        }
+      ],
+      "expected_saved_event_count": 1,
+      "expected_job_result": "updated"
+    },
+    {
+      "id": "noise-rejected",
+      "initial_profile": {
+        "goals": "",
+        "status": "active",
+        "preferences": {
+          "summary": "",
+          "facts": [],
+          "communication_preferences": [],
+          "open_loops": []
+        }
+      },
+      "user_message": "今天有点累，先随便聊聊。",
+      "ai_response": "可以，我们先轻松一点，不急着做任何承诺。",
+      "mock_artifacts": {
+        "profile_patch": {
+          "should_update": false,
+          "summary": "",
+          "goals": "",
+          "status": "",
+          "facts": [],
+          "communication_preferences": [],
+          "open_loops": []
+        },
+        "memory_event_candidates": [
+          {
+            "event_type": "setback",
+            "title": "今天有点累",
+            "summary": "用户只是说今天有点累，没有明确长期记忆价值。",
+            "detail": "",
+            "keywords": ["累"],
+            "importance": 0.2,
+            "confidence": 0.2
+          }
+        ]
+      },
+      "expected_profile": {
+        "should_update": false
+      },
+      "expected_saved_event_count": 0,
+      "expected_job_result": "no_update"
+    },
+    {
+      "id": "memory-event-write-error-does-not-block-profile",
+      "user_message": "我这周想重新捡起晨间复盘，别让我太快放弃。",
+      "ai_response": "那我们先从每天 10 分钟开始，先稳住启动动作。",
+      "mock_artifacts": {
+        "profile_patch": {
+          "should_update": true,
+          "summary": "用户正在尝试恢复晨间复盘。",
+          "goals": "恢复晨间复盘节奏",
+          "status": "active",
+          "facts": ["最近重新提起晨间复盘"],
+          "communication_preferences": ["希望被提醒时不要太用力"],
+          "open_loops": ["连续做 7 天晨间复盘"]
+        },
+        "memory_event_candidates": [
+          {
+            "event_type": "commitment",
+            "title": "重新捡起晨间复盘",
+            "summary": "用户承诺这周重新开始晨间复盘。",
+            "detail": "她想先从每天 10 分钟开始。",
+            "keywords": ["晨间复盘", "承诺"],
+            "importance": 0.88,
+            "confidence": 0.9
+          }
+        ]
+      },
+      "simulate_memory_event_write_error": true,
+      "simulated_error_message": "simulated memory event write failure",
+      "expected_profile": {
+        "should_update": true,
+        "goals_equals": "恢复晨间复盘节奏",
+        "facts_contains": ["晨间复盘"],
+        "open_loops_contains": ["7 天晨间复盘"]
+      },
+      "expected_saved_event_count": 0,
+      "expected_job_result": "updated_with_memory_event_errors",
+      "expect_memory_event_error": true
+    }
+  ]
+}

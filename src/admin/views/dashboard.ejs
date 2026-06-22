@@ -35,6 +35,28 @@
 
         <div class="stat-card">
             <div class="stat-icon">
+                <i class="fas fa-bookmark"></i>
+            </div>
+            <div class="stat-content">
+                <h3>Memory Events</h3>
+                <p class="stat-number"><%= stats.memoryEventsCount || 0 %></p>
+                <p class="stat-desc">可治理的历史事件记忆</p>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon">
+                <i class="fas fa-link"></i>
+            </div>
+            <div class="stat-content">
+                <h3>命中回复</h3>
+                <p class="stat-number"><%= stats.memoryHitMessagesCount || 0 %></p>
+                <p class="stat-desc">已记录 memory_refs 的 assistant 回复</p>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon">
                 <i class="fas fa-arrows-rotate"></i>
             </div>
             <div class="stat-content">
@@ -75,6 +97,12 @@
             <li>同步任务：pending=<%= systemOverview?.syncJobSummary?.byStatus?.pending || 0 %>，processing=<%= systemOverview?.syncJobSummary?.byStatus?.processing || 0 %>，completed=<%= systemOverview?.syncJobSummary?.byStatus?.completed || 0 %>，failed=<%= systemOverview?.syncJobSummary?.byStatus?.failed || 0 %></li>
         </ul>
         <div class="action-bar">
+            <a href="/admin/memory-events" class="btn btn-primary">
+                <i class="fas fa-bookmark"></i> 查看 Memory Events
+            </a>
+            <a href="/admin/memory-events/hits" class="btn btn-secondary">
+                <i class="fas fa-link"></i> 查看命中回复
+            </a>
             <a href="/admin/sync-jobs" class="btn btn-secondary">
                 <i class="fas fa-arrows-rotate"></i> 查看同步任务
             </a>

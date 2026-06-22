@@ -1,5 +1,7 @@
-<% if (error || (flash && flash.error)) { %>
-    <div class="alert alert-error"><%= error || flash.error %></div>
+<% const importError = (typeof error !== 'undefined' && error)
+    || ((typeof flash !== 'undefined' && flash) ? flash.error : ''); %>
+<% if (importError) { %>
+    <div class="alert alert-error"><%= importError %></div>
 <% } %>
 
 <form method="POST" action="/admin/knowledge/import">

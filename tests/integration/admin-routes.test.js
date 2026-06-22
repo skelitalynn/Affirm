@@ -2,6 +2,8 @@ const request = require('supertest');
 const User = require('../../src/models/user');
 const Profile = require('../../src/models/profile');
 const Knowledge = require('../../src/models/knowledge');
+const MemoryEvent = require('../../src/models/memory-event');
+const Message = require('../../src/models/message');
 const { db } = require('../../src/db/connection');
 
 process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'test-admin-password';
@@ -13,6 +15,8 @@ describe('Admin Routes Integration', () => {
     let testTelegramId;
     let profileId;
     let knowledgeId;
+    let memoryEventId;
+    let assistantMessageId;
 
     beforeAll(async () => {
         testTelegramId = Date.now();
@@ -33,8 +37,16 @@ describe('Admin Routes Integration', () => {
                 await Profile.delete(profile.user_id);
             }
         }
+        if (assistantMessageId) {
+            await Message.delete(assistantMessageId);
+        }
+        if (memoryEventId) {
+            await MemoryEvent.delete(memoryEventId);
+        }
 
         await db.query('DELETE FROM knowledge_chunks WHERE user_id = $1', [testUserId]);
+        await db.query('DELETE FROM messages WHERE user_id = $1', [testUserId]);
+        await db.query('DELETE FROM memory_events WHERE user_id = $1', [testUserId]);
         await db.query('DELETE FROM profiles WHERE user_id = $1', [testUserId]);
         await User.delete(testTelegramId);
     });
@@ -192,5 +204,183 @@ describe('Admin Routes Integration', () => {
 
         expect(imported.rows.length).toBeGreaterThan(1);
         expect(imported.rows.every((row) => row.content && row.content.length > 0)).toBe(true);
+    });
+
+    it('should complete memory events governance flow from admin routes', async () => {
+        const memoryEvent = await MemoryEvent.create({
+            user_id: testUserId,
+            event_type: 'commitment',
+            title: 'admin memory event',
+            summary: '用户承诺继续晨间复盘',
+            detail: '这条事件用于验证 Phase 5 的后台治理闭环。',
+            keywords: ['admin', 'memory'],
+            importance: 0.7,
+            confidence: 0.9,
+            metadata: { created_by: 'integration-test' }
+        });
+        memoryEventId = memoryEvent.id;
+        const duplicateMemoryEvent = await MemoryEvent.create({
+            user_id: testUserId,
+            event_type: 'commitment',
+            title: 'admin memory event duplicate',
+            summary: '用户重复提到会继续晨间复盘',
+            detail: '这条事件用于验证后台 merge 治理动作。',
+            keywords: ['admin', 'memory', 'duplicate'],
+            importance: 0.66,
+            confidence: 0.74,
+            metadata: { created_by: 'integration-test-duplicate' }
+        });
+
+        const assistantMessage = await Message.create({
+            user_id: testUserId,
+            role: 'assistant',
+            content: '我记得你上次说过，这周想把晨间复盘重新捡起来。',
+            metadata: {
+                trace_id: 'trace-admin-memory-hit',
+                generation: {
+                    recalled_memory_count: 1,
+                    recalled_memory_in_prompt: true
+                },
+                memory_refs: [{
+                    id: memoryEventId,
+                    event_type: 'commitment',
+                    title: 'admin memory event',
+                    final_score: 0.88
+                }]
+            }
+        });
+        assistantMessageId = assistantMessage.id;
+
+        const listRes = await request(app)
+            .get('/admin/memory-events')
+            .auth('admin', process.env.ADMIN_PASSWORD);
+
+        expect(listRes.status).toBe(200);
+        expect(listRes.text).toContain('admin memory event');
+
+        const editRes = await request(app)
+            .get(`/admin/memory-events/${memoryEventId}/edit`)
+            .auth('admin', process.env.ADMIN_PASSWORD);
+
+        expect(editRes.status).toBe(200);
+        expect(editRes.text).toContain('用户承诺继续晨间复盘');
+
+        const hitsRes = await request(app)
+            .get('/admin/memory-events/hits')
+            .auth('admin', process.env.ADMIN_PASSWORD);
+
+        expect(hitsRes.status).toBe(200);
+        expect(hitsRes.text).toContain('trace-admin-memory-hit');
+
+        const hitDetailRes = await request(app)
+            .get(`/admin/memory-events/hits/${assistantMessageId}`)
+            .auth('admin', process.env.ADMIN_PASSWORD);
+
+        expect(hitDetailRes.status).toBe(200);
+        expect(hitDetailRes.text).toContain('admin memory event');
+        expect(hitDetailRes.text).toContain('我记得你上次说过');
+
+        const updateRes = await request(app)
+            .post(`/admin/memory-events/${memoryEventId}/update`)
+            .set('Origin', origin)
+            .auth('admin', process.env.ADMIN_PASSWORD)
+            .type('form')
+            .send({
+                event_type: 'commitment',
+                title: 'admin memory event updated',
+                summary: '用户承诺继续晨间复盘并降低启动门槛',
+                detail: '更新后的后台治理详情',
+                keywords: 'admin,memory,updated',
+                importance: '0.92',
+                confidence: '0.95',
+                happened_at: '2026-04-15T08:00',
+                status: 'active',
+                review_status: 'edited'
+            });
+
+        expect(updateRes.status).toBe(302);
+        expect(updateRes.headers.location).toContain('/admin/memory-events');
+
+        const updatedEvent = await MemoryEvent.findById(memoryEventId);
+        expect(updatedEvent.title).toBe('admin memory event updated');
+        expect(updatedEvent.importance).toBe(0.92);
+        expect(updatedEvent.confidence).toBe(0.95);
+        expect(updatedEvent.keywords).toEqual(['admin', 'memory', 'updated']);
+        expect(updatedEvent.review_status).toBe('edited');
+
+        const suppressRes = await request(app)
+            .post(`/admin/memory-events/${memoryEventId}/suppress`)
+            .set('Origin', origin)
+            .auth('admin', process.env.ADMIN_PASSWORD);
+
+        expect(suppressRes.status).toBe(302);
+        const suppressedEvent = await MemoryEvent.findById(memoryEventId);
+        expect(suppressedEvent.status).toBe('suppressed');
+
+        const restoreRes = await request(app)
+            .post(`/admin/memory-events/${memoryEventId}/restore`)
+            .set('Origin', origin)
+            .auth('admin', process.env.ADMIN_PASSWORD);
+
+        expect(restoreRes.status).toBe(302);
+        const restoredEvent = await MemoryEvent.findById(memoryEventId);
+        expect(restoredEvent.status).toBe('active');
+
+        const verifyRes = await request(app)
+            .post(`/admin/memory-events/${memoryEventId}/review`)
+            .set('Origin', origin)
+            .auth('admin', process.env.ADMIN_PASSWORD)
+            .type('form')
+            .send({
+                review_status: 'verified'
+            });
+
+        expect(verifyRes.status).toBe(302);
+        const verifiedEvent = await MemoryEvent.findById(memoryEventId);
+        expect(verifiedEvent.review_status).toBe('verified');
+        expect(verifiedEvent.last_reviewed_at).toBeTruthy();
+
+        const rejectRes = await request(app)
+            .post(`/admin/memory-events/${duplicateMemoryEvent.id}/review`)
+            .set('Origin', origin)
+            .auth('admin', process.env.ADMIN_PASSWORD)
+            .type('form')
+            .send({
+                review_status: 'rejected'
+            });
+
+        expect(rejectRes.status).toBe(302);
+        const rejectedDuplicate = await MemoryEvent.findById(duplicateMemoryEvent.id);
+        expect(rejectedDuplicate.review_status).toBe('rejected');
+
+        const mergeRes = await request(app)
+            .post(`/admin/memory-events/${duplicateMemoryEvent.id}/merge`)
+            .set('Origin', origin)
+            .auth('admin', process.env.ADMIN_PASSWORD)
+            .type('form')
+            .send({
+                target_event_id: memoryEventId,
+                reason: 'duplicate_event'
+            });
+
+        expect(mergeRes.status).toBe(302);
+        const mergedDuplicate = await MemoryEvent.findById(duplicateMemoryEvent.id);
+        const canonicalAfterMerge = await MemoryEvent.findById(memoryEventId);
+        expect(mergedDuplicate.status).toBe('merged');
+        expect(mergedDuplicate.review_status).toBe('verified');
+        expect(mergedDuplicate.merged_into_event_id).toBe(memoryEventId);
+        expect(canonicalAfterMerge.metadata.governance.merged_from_event_ids).toContain(duplicateMemoryEvent.id);
+
+        const deleteRes = await request(app)
+            .post(`/admin/memory-events/${memoryEventId}/delete`)
+            .set('Origin', origin)
+            .auth('admin', process.env.ADMIN_PASSWORD);
+
+        expect(deleteRes.status).toBe(302);
+        expect(deleteRes.headers.location).toContain('/admin/memory-events');
+
+        const deletedEvent = await MemoryEvent.findById(memoryEventId);
+        expect(deletedEvent).toBeNull();
+        memoryEventId = null;
     });
 });

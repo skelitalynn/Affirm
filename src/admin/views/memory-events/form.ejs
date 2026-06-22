@@ -1,0 +1,216 @@
+<%
+const keywordsValue = Array.isArray(event?.keywords) ? event.keywords.join(', ') : (event?.keywords || '');
+const metadataValue = event?.metadata ? JSON.stringify(event.metadata, null, 2) : '{}';
+const sourceMessageIds = Array.isArray(event?.source_message_ids) ? event.source_message_ids.join('\n') : '';
+const badgeClassMap = {
+    active: 'status-completed',
+    suppressed: 'status-failed',
+    merged: 'status-processing',
+    archived: 'status-pending',
+    pending: 'status-pending',
+    verified: 'status-completed',
+    edited: 'status-processing',
+    rejected: 'status-failed'
+};
+function badgeClass(value) {
+    return badgeClassMap[value] || 'status-processing';
+}
+let happenedAtValue = '';
+if (event?.happened_at) {
+    const happenedAtDate = new Date(event.happened_at);
+    if (!Number.isNaN(happenedAtDate.getTime())) {
+        happenedAtValue = happenedAtDate.toISOString().slice(0, 16);
+    }
+}
+%>
+
+<% if (typeof error !== 'undefined' && error) { %>
+    <div class="alert alert-error"><%= error %></div>
+<% } %>
+
+<div class="detail-grid">
+    <section class="panel">
+        <h3>基础信息</h3>
+        <ul class="meta-list">
+            <li><strong>ID：</strong><code><%= event.id %></code></li>
+            <li><strong>User ID：</strong><code><%= event.user_id %></code></li>
+            <li><strong>召回次数：</strong><%= event.recall_count || 0 %></li>
+            <li><strong>最后召回：</strong><%= event.last_recalled_at ? new Date(event.last_recalled_at).toLocaleString('zh-CN') : '-' %></li>
+            <li><strong>治理状态：</strong><span class="status-badge <%= badgeClass(event.status) %>"><%= event.status || 'active' %></span></li>
+            <li><strong>复核状态：</strong><span class="status-badge <%= badgeClass(event.review_status) %>"><%= event.review_status || 'pending' %></span></li>
+            <li><strong>最后复核：</strong><%= event.last_reviewed_at ? new Date(event.last_reviewed_at).toLocaleString('zh-CN') : '-' %></li>
+            <li><strong>合并目标：</strong><%= event.merged_into_event_id ? event.merged_into_event_id : '-' %></li>
+            <li><strong>创建时间：</strong><%= event.created_at ? new Date(event.created_at).toLocaleString('zh-CN') : '-' %></li>
+            <li><strong>更新时间：</strong><%= event.updated_at ? new Date(event.updated_at).toLocaleString('zh-CN') : '-' %></li>
+        </ul>
+    </section>
+
+    <section class="panel">
+        <h3>来源信息</h3>
+        <div class="form-group">
+            <label>source_message_ids</label>
+            <pre class="pre-wrap"><%= sourceMessageIds || '无' %></pre>
+        </div>
+        <div class="form-group">
+            <label>metadata</label>
+            <pre class="pre-wrap"><%= metadataValue %></pre>
+        </div>
+    </section>
+</div>
+
+<form method="POST" action="/admin/memory-events/<%= event.id %>/update">
+    <div class="form-group">
+        <label for="event_type">事件类型</label>
+        <select id="event_type" name="event_type" class="form-control" required>
+            <% eventTypes.forEach(type => { %>
+                <option value="<%= type %>" <%= event.event_type === type ? 'selected' : '' %>><%= type %></option>
+            <% }) %>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="title">标题</label>
+        <input id="title" name="title" class="form-control" value="<%= event.title || '' %>" required>
+    </div>
+
+    <div class="form-group">
+        <label for="summary">摘要</label>
+        <textarea id="summary" name="summary" class="form-control" required><%= event.summary || '' %></textarea>
+    </div>
+
+    <div class="form-group">
+        <label for="detail">详情</label>
+        <textarea id="detail" name="detail" class="form-control"><%= event.detail || '' %></textarea>
+    </div>
+
+    <div class="form-group">
+        <label for="keywords">关键词（逗号或换行分隔）</label>
+        <textarea id="keywords" name="keywords" class="form-control"><%= keywordsValue %></textarea>
+    </div>
+
+    <div class="detail-grid">
+        <div class="form-group">
+            <label for="importance">重要度</label>
+            <input type="number" min="0" max="1" step="0.01" id="importance" name="importance" class="form-control" value="<%= event.importance %>">
+        </div>
+
+        <div class="form-group">
+            <label for="confidence">置信度</label>
+            <input type="number" min="0" max="1" step="0.01" id="confidence" name="confidence" class="form-control" value="<%= event.confidence %>">
+        </div>
+    </div>
+
+    <div class="detail-grid">
+        <div class="form-group">
+            <label for="status">治理状态</label>
+            <select id="status" name="status" class="form-control" required>
+                <% eventStatuses.filter(status => status !== 'merged').forEach(status => { %>
+                    <option value="<%= status %>" <%= event.status === status ? 'selected' : '' %>><%= status %></option>
+                <% }) %>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="review_status">复核状态</label>
+            <select id="review_status" name="review_status" class="form-control" required>
+                <% reviewStatuses.forEach(status => { %>
+                    <option value="<%= status %>" <%= event.review_status === status ? 'selected' : '' %>><%= status %></option>
+                <% }) %>
+            </select>
+        </div>
+    </div>
+
+    <div class="form-group">
+        <label for="happened_at">发生时间</label>
+        <input type="datetime-local" id="happened_at" name="happened_at" class="form-control" value="<%= happenedAtValue %>">
+    </div>
+
+    <div class="action-bar">
+        <button type="submit" class="btn btn-primary">
+            <i class="fas fa-save"></i> 保存修改
+        </button>
+        <a href="/admin/memory-events" class="btn btn-secondary">返回列表</a>
+        <a href="/admin/memory-events/hits?event_id=<%= encodeURIComponent(event.id) %>" class="btn btn-secondary">
+            <i class="fas fa-link"></i> 查看命中回复
+        </a>
+    </div>
+</form>
+
+<section class="panel">
+    <h3>治理动作</h3>
+    <div class="action-bar">
+        <% if (event.status === 'active') { %>
+            <form method="POST" action="/admin/memory-events/<%= event.id %>/suppress">
+                <button type="submit" class="btn btn-secondary">suppress</button>
+            </form>
+        <% } else if (event.status === 'suppressed' || event.status === 'archived') { %>
+            <form method="POST" action="/admin/memory-events/<%= event.id %>/restore">
+                <button type="submit" class="btn btn-secondary">restore</button>
+            </form>
+        <% } %>
+        <form method="POST" action="/admin/memory-events/<%= event.id %>/review">
+            <input type="hidden" name="review_status" value="verified">
+            <button type="submit" class="btn btn-secondary">mark verified</button>
+        </form>
+        <form method="POST" action="/admin/memory-events/<%= event.id %>/review">
+            <input type="hidden" name="review_status" value="rejected">
+            <button type="submit" class="btn btn-secondary">mark rejected</button>
+        </form>
+    </div>
+
+    <form method="POST" action="/admin/memory-events/<%= event.id %>/merge">
+        <div class="detail-grid">
+            <div class="form-group">
+                <label for="target_event_id">合并到 canonical event</label>
+                <select id="target_event_id" name="target_event_id" class="form-control" required>
+                    <option value="">请选择 active event</option>
+                    <% mergeCandidates.forEach(candidate => { %>
+                        <option value="<%= candidate.id %>"><%= candidate.title %> · <%= candidate.event_type %> · <%= candidate.id %></option>
+                    <% }) %>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="reason">治理原因</label>
+                <input id="reason" name="reason" class="form-control" value="duplicate_event">
+            </div>
+        </div>
+        <button type="submit" class="btn btn-secondary">merge into canonical</button>
+    </form>
+</section>
+
+<section class="panel">
+    <h3>最近命中这条记忆的回复</h3>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>时间</th>
+                <th>用户</th>
+                <th>回复内容</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            <% if (hitMessages && hitMessages.length > 0) { %>
+                <% hitMessages.forEach(message => { %>
+                    <tr>
+                        <td><%= new Date(message.created_at).toLocaleString('zh-CN') %></td>
+                        <td>
+                            <div><%= message.username || '-' %></div>
+                            <div class="text-muted"><code><%= message.user_id %></code></div>
+                        </td>
+                        <td><div class="table-preview"><%= message.content %></div></td>
+                        <td>
+                            <a href="/admin/memory-events/hits/<%= message.id %>" class="btn btn-sm btn-secondary">
+                                <i class="fas fa-eye"></i> 查看详情
+                            </a>
+                        </td>
+                    </tr>
+                <% }) %>
+            <% } else { %>
+                <tr>
+                    <td colspan="4" class="text-center">暂无命中记录</td>
+                </tr>
+            <% } %>
+        </tbody>
+    </table>
+</section>

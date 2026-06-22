@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const { Pool } = require('pg');
-require('dotenv').config();
+require('dotenv').config({ override: true });
 
 const MIGRATIONS_TABLE = 'schema_migrations';
 

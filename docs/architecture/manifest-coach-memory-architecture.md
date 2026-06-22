@@ -1,7 +1,7 @@
 # 显化导师长期记忆架构
 
-**更新日期**：2026-04-14
-**状态**：目标架构定义文档；其中 `messages` / `profiles` 已存在，`memory_events` 仍待实现
+**更新日期**：2026-04-16
+**状态**：目标架构定义文档；截至 `2026-04-16`，`messages` / `profiles` 已存在，`memory_events` 的存储、写入、检索、rerank、prompt 注入和治理第一版已实现；replay eval、利用质量评估与更成熟治理仍待继续实现
 
 ## 1. 这份文档解决什么问题
 
@@ -47,6 +47,7 @@ Affirm 的产品目标，不是“让机器人记住最近几轮对话”，而�
 - 读取 `profiles`
 - 可选读取 Haystack 外部知识
 - 回复后异步更新 `profiles`
+- 已具备回复后写入 `memory_events` 候选的基础能力
 
 但它仍然缺少“长期历史召回”的关键一层。
 
@@ -74,12 +75,14 @@ Affirm 的产品目标，不是“让机器人记住最近几轮对话”，而�
 - 某个重复出现的限制性信念
 - 上次类似主题下的有效支持方式
 
-### 3.3 当前问题 3：用户记忆和外部知识是分开的，但用户历史层缺席
+### 3.3 当前问题 3：用户记忆和外部知识已经分开，但历史记忆的质量闭环还没建完
 
-这是当前系统的优点，也是当前能力上限：
+这是当前系统的优点，也是当前新的演进方向：
 
 1. 优点：没有把用户记忆和知识库混在一起
-2. 上限：用户历史事件记忆还没有自己的检索层
+2. 已补：用户历史事件记忆已经有独立存储层 `memory_events`
+3. 已补：`memory_events` 已有检索层，也已经进入 prompt
+4. 上限：召回效果评估、排序优化和成熟治理仍在继续推进
 
 ## 4. 目标中的四层记忆模型
 
@@ -304,16 +307,22 @@ final_score
 - `MemoryService`
 - `sync_jobs`
 - `Haystack`
+- `memory_events` 数据表与模型
+- `memory_event_candidates` 基础写入链路
+- 历史事件 hybrid retrieval
+- 历史事件 rule-based rerank
+- 历史事件 prompt 注入
+- 历史事件后台治理基础版
+- retrieval eval baseline
 
 还没有的核心能力：
 
-- `memory_events`
-- 历史事件抽取
-- 历史事件 hybrid retrieval
-- 历史事件 prompt 注入
-- 历史事件后台治理
+- 真实 transcript replay eval
+- assistant 对 recalled memory 的利用质量评估
+- 更细的排序与权重优化
+- 更成熟的 compaction / 自动治理策略
 
-所以当前不能把“长期记忆效果”描述成已完成。
+所以当前可以把“历史事件第一版效果闭环”描述成已完成，但不能把“长期记忆效果优化”描述成已完成。
 
 ## 11. 这一架构的优点
 
@@ -340,9 +349,9 @@ final_score
 更稳的做法是：
 
 1. 先保留当前 `v2-min` 可运行闭环
-2. 新增 `memory_events` 表和模型
-3. 让回复后同时产出 `profile patch + memory events`
-4. 在主链路里加入 `memory_events` 检索
+2. 已完成 `memory_events` 表和模型
+3. 已完成回复后产出 `profile patch + memory events` 的基础写入
+4. 下一步在主链路里加入 `memory_events` 检索
 5. 再补后台和评估
 
 具体实施步骤见：

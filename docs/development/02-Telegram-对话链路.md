@@ -1,7 +1,7 @@
 # 02 Telegram 对话链路
 
-**更新日期**：2026-04-14
-**当前状态**：当前描述 `v2-min` 实际链路，并补充 `v2-target` 目标链路
+**更新日期**：2026-04-15
+**当前状态**：当前描述 `v2-min` 实际链路；截至今日已接入 `memory_events` 检索与 prompt 注入
 
 ## 1. 什么时候看这篇
 
@@ -51,9 +51,10 @@ user message
   -> Message.create(user, metadata.trace_id)
   -> Profile.findOrCreate()
   -> Message.getRecentMessages()
+  -> MemoryRetrievalService.searchRelevantEvents()
   -> Knowledge.semanticSearch()
   -> AIService.generateResponse()
-  -> Message.create(assistant, metadata.generation / knowledge_refs)
+  -> Message.create(assistant, metadata.generation / knowledge_refs / memory_refs)
   -> bot.sendMessage()
   -> MemoryService.updateLongTermMemory()
   -> SyncJob(memory_update)
@@ -61,19 +62,26 @@ user message
 
 ## 4. 当前上下文读取顺序
 
-当前实际读取的是三层上下文：
+当前实际在回复前会读取四层上下文：
 
 1. `profile memory`
 2. `recent messages`
-3. `knowledge RAG`
+3. `recalled memory events`
+4. `knowledge RAG`
 
 再加上：
 
-4. 当前用户输入
+5. 当前用户输入
 
-因此当前 prompt 顺序是：
+截至 `2026-04-15`，实际 prompt 顺序已经变成：
 
-`system -> profile memory -> recent messages -> knowledge -> current user message`
+`system -> profile memory -> recalled memory events -> recent messages -> knowledge -> current user message`
+
+也就是说：
+
+1. 召回已经发生
+2. recalled memory 已进入 prompt
+3. trace / metadata 已记录召回结果
 
 ## 5. 当前硬边界
 
@@ -87,20 +95,22 @@ user message
 
 ## 6. 为什么当前链路还不够
 
-当前链路可以让机器人：
+当前链路已经可以让机器人：
 
 - 读最近几轮
 - 读稳定记忆
+- 在回复前检索相关 `memory_events`
+- 把相关历史事件注入当前 prompt
 - 读外部知识
 
 但它还不能稳定做到：
 
-- 从很多历史内容中召回相关经历
-- 把“你之前有过类似情况”这种信息带进当前轮回复
+- 对错误历史事件做后台修正和治理
 
-原因不是 prompt 顺序不对，而是当前缺了一层：
+当前剩余问题已经变成：
 
-- `memory_events`
+1. 召回质量还没做效果评估
+2. 还没有治理页面与人工修正入口
 
 ## 7. 目标链路应该长什么样
 
@@ -148,22 +158,23 @@ user message
 | 外部知识查询接入 | `src/models/knowledge.js` + `src/services/rag/*` |
 | 用户级串行队列 | `src/utils/message-queue.js` |
 
-未来计划新增的文件：
+当前已经新增并接入的文件：
 
-| 目标 | 计划文件 |
+| 目标 | 当前文件 |
 |------|----------|
 | 历史事件模型 | `src/models/memory-event.js` |
 | 历史事件写入 | `src/services/memory-event-service.js` |
 | 历史事件检索 | `src/services/memory-retrieval-service.js` |
 
-这些文件当前还不存在，不要把文档写成已实现。
+当前已经完成的，是把 `recalled memory events` 真正注入 `AIService.prepareMessages()`。
 
 ## 9. `v2-min` 新增点
 
 ### `trace_id`
 
 - user / assistant message 都会带 `metadata.trace_id`
-- assistant message 还会记录 provider、model、knowledge refs
+- assistant message 还会记录 provider、model、knowledge refs、memory refs
+- Phase 4 后还会记录 `generation.recalled_memory_in_prompt`
 
 ### `MemoryService`
 
@@ -206,14 +217,16 @@ WEBHOOK_ENABLED=true npm start
 
 1. 回复后是否生成 `memory_events`
 2. 类似主题提问时是否能召回相关历史事件
-3. prompt 中是否出现“历史相关记忆片段”
-4. 错误历史事件是否能在后台修正
+3. assistant message metadata 中是否写入 `memory_refs`
+4. assistant message metadata 中是否写入 `recalled_memory_in_prompt=true`
+5. prompt 中是否出现“历史相关记忆片段”
+6. 错误历史事件是否能在后台修正
 
 ## 11. 最容易犯的错
 
 1. 把长期记忆写回 `messages`
 2. 把知识库内容混进 `profiles`
 3. 让记忆更新阻塞主回复
-4. 只改 prompt，不改读取链路
+4. 只看 `memory_refs`，却没确认 recalled memory 是否真的进入 prompt
 5. 误以为 Haystack 能替代用户历史记忆召回
-6. 把目标中的 `memory_events` 写成已落地能力
+6. 把 Phase 5 基础治理误写成“评估、排序优化和成熟治理都已完成”

@@ -4,7 +4,7 @@
     <% preferencesValue = typeof profile.preferences === 'string' ? profile.preferences : JSON.stringify(profile.preferences, null, 2); %>
 <% } %>
 
-<% if (error) { %>
+<% if (typeof error !== 'undefined' && error) { %>
     <div class="alert alert-error"><%= error %></div>
 <% } %>
 

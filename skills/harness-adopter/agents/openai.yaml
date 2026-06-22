@@ -1,0 +1,4 @@
+interface:
+  display_name: "Harness Adopter"
+  short_description: "为已有仓库增量接入可验证的 Agent Harness"
+  default_prompt: "Use $harness-adopter to install or audit a minimal agent harness in this repository, preserving docs/README.md as the documentation router when it exists."

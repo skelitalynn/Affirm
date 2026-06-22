@@ -1,0 +1,192 @@
+<%
+const badgeClassMap = {
+    active: 'status-completed',
+    suppressed: 'status-failed',
+    merged: 'status-processing',
+    archived: 'status-pending',
+    pending: 'status-pending',
+    verified: 'status-completed',
+    edited: 'status-processing',
+    rejected: 'status-failed'
+};
+function badgeClass(value) {
+    return badgeClassMap[value] || 'status-processing';
+}
+%>
+
+<div class="stats compact-stats">
+    <div class="stat-card">
+        <div class="stat-content">
+            <h3>总事件数</h3>
+            <p class="stat-number"><%= stats.totalCount || 0 %></p>
+            <p class="stat-desc">当前库中的 `memory_events`</p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-content">
+            <h3>已被召回</h3>
+            <p class="stat-number"><%= stats.recalledCount || 0 %></p>
+            <p class="stat-desc">`recall_count > 0` 的事件</p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-content">
+            <h3>待复核</h3>
+            <p class="stat-number"><%= stats.pendingReviewCount || 0 %></p>
+            <p class="stat-desc">`review_status = pending`</p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-content">
+            <h3>命中回复</h3>
+            <p class="stat-number"><%= stats.hitMessagesCount || 0 %></p>
+            <p class="stat-desc">带 `memory_refs` 的 assistant 回复</p>
+        </div>
+    </div>
+</div>
+
+<div class="action-bar">
+    <a href="/admin/memory-events/hits" class="btn btn-secondary">
+        <i class="fas fa-link"></i> 查看命中回复
+    </a>
+    <form method="GET" action="/admin/memory-events" class="filter-form">
+        <div class="filter-group">
+            <label for="user_id">User ID</label>
+            <input id="user_id" name="user_id" class="form-control" value="<%= filters.userId || '' %>">
+        </div>
+        <div class="filter-group">
+            <label for="event_type">事件类型</label>
+            <select id="event_type" name="event_type" class="form-control">
+                <option value="">全部</option>
+                <% eventTypes.forEach(type => { %>
+                    <option value="<%= type %>" <%= filters.eventType === type ? 'selected' : '' %>><%= type %></option>
+                <% }) %>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="status">治理状态</label>
+            <select id="status" name="status" class="form-control">
+                <option value="">全部</option>
+                <% eventStatuses.forEach(status => { %>
+                    <option value="<%= status %>" <%= filters.status === status ? 'selected' : '' %>><%= status %></option>
+                <% }) %>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="review_status">复核状态</label>
+            <select id="review_status" name="review_status" class="form-control">
+                <option value="">全部</option>
+                <% reviewStatuses.forEach(status => { %>
+                    <option value="<%= status %>" <%= filters.reviewStatus === status ? 'selected' : '' %>><%= status %></option>
+                <% }) %>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="search">搜索</label>
+            <input id="search" name="search" class="form-control" value="<%= filters.search || '' %>" placeholder="title / summary / username">
+        </div>
+        <div class="filter-group checkbox-group">
+            <label>
+                <input type="checkbox" name="recalled_only" value="true" <%= filters.recalledOnly ? 'checked' : '' %>>
+                只看已召回
+            </label>
+        </div>
+        <button type="submit" class="btn btn-primary">
+            <i class="fas fa-search"></i> 筛选
+        </button>
+    </form>
+</div>
+
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>用户</th>
+            <th>类型</th>
+            <th>标题</th>
+            <th>status</th>
+            <th>review</th>
+            <th>重要度</th>
+            <th>召回次数</th>
+            <th>合并目标</th>
+            <th>更新时间</th>
+            <th>操作</th>
+        </tr>
+    </thead>
+    <tbody>
+        <% if (events && events.length > 0) { %>
+            <% events.forEach(event => { %>
+                <tr>
+                    <td><code><%= event.id %></code></td>
+                    <td>
+                        <div><%= event.username || '-' %></div>
+                        <div class="text-muted"><code><%= event.user_id %></code></div>
+                    </td>
+                    <td><span class="status-badge status-processing"><%= event.event_type %></span></td>
+                    <td>
+                        <div><strong><%= event.title %></strong></div>
+                        <div class="table-preview"><%= event.summary %></div>
+                    </td>
+                    <td><span class="status-badge <%= badgeClass(event.status) %>"><%= event.status %></span></td>
+                    <td><span class="status-badge <%= badgeClass(event.review_status) %>"><%= event.review_status %></span></td>
+                    <td><%= event.importance %> / <%= event.confidence %></td>
+                    <td>
+                        <div><%= event.recall_count || 0 %></div>
+                        <div class="text-muted"><%= event.last_recalled_at ? new Date(event.last_recalled_at).toLocaleString('zh-CN') : '-' %></div>
+                    </td>
+                    <td>
+                        <% if (event.merged_into_event_id) { %>
+                            <div><code><%= event.merged_into_event_id %></code></div>
+                            <div class="table-preview"><%= event.merged_into_title || '-' %></div>
+                        <% } else { %>
+                            -
+                        <% } %>
+                    </td>
+                    <td><%= new Date(event.updated_at || event.created_at).toLocaleString('zh-CN') %></td>
+                    <td class="actions">
+                        <a href="/admin/memory-events/<%= event.id %>/edit" class="btn btn-sm btn-edit">
+                            <i class="fas fa-edit"></i> 编辑
+                        </a>
+                        <a href="/admin/memory-events/hits?event_id=<%= encodeURIComponent(event.id) %>" class="btn btn-sm btn-secondary">
+                            <i class="fas fa-link"></i> 命中
+                        </a>
+                        <% if (event.status === 'active') { %>
+                            <form action="/admin/memory-events/<%= event.id %>/suppress" method="POST" style="display: inline;">
+                                <button type="submit" class="btn btn-sm btn-secondary">
+                                    suppress
+                                </button>
+                            </form>
+                        <% } else if (event.status === 'suppressed' || event.status === 'archived') { %>
+                            <form action="/admin/memory-events/<%= event.id %>/restore" method="POST" style="display: inline;">
+                                <button type="submit" class="btn btn-sm btn-secondary">
+                                    restore
+                                </button>
+                            </form>
+                        <% } %>
+                        <% if (event.review_status !== 'verified') { %>
+                            <form action="/admin/memory-events/<%= event.id %>/review" method="POST" style="display: inline;">
+                                <input type="hidden" name="review_status" value="verified">
+                                <button type="submit" class="btn btn-sm btn-secondary">verify</button>
+                            </form>
+                        <% } %>
+                        <% if (event.review_status !== 'rejected') { %>
+                            <form action="/admin/memory-events/<%= event.id %>/review" method="POST" style="display: inline;">
+                                <input type="hidden" name="review_status" value="rejected">
+                                <button type="submit" class="btn btn-sm btn-secondary">reject</button>
+                            </form>
+                        <% } %>
+                        <form action="/admin/memory-events/<%= event.id %>/delete" method="POST" style="display: inline;">
+                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('确定删除这个 Memory Event 吗？')">
+                                <i class="fas fa-trash"></i> 删除
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+            <% }) %>
+        <% } else { %>
+            <tr>
+                <td colspan="11" class="text-center">暂无 Memory Event</td>
+            </tr>
+        <% } %>
+    </tbody>
+</table>

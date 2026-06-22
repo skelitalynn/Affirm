@@ -27,7 +27,7 @@ AI 自动生成的任何文档、报告、分析，必须写入对应的 `docs/`
 | 架构设计、技术方案 | `docs/architecture/` |
 | 开发日志、进度报告、审计 | `docs/reports/` |
 | 数据库设计、ER 图 | `docs/database/` |
-| 项目概述、需求说明 | `docs/project/` |
+| 项目概述、需求说明 | `docs/` 顶层 Harness 文档 |
 | 开发计划、技术路线 | `docs/development/` |
 
 ---

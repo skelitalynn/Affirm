@@ -1,0 +1,29 @@
+{
+  "name": "degradation-baseline-v1",
+  "description": "验证 embedding、retrieval 和 knowledge RAG 异常时的降级路径。",
+  "cases": [
+    {
+      "id": "embedding-auth-fallback",
+      "type": "embedding_fallback",
+      "text": "我最近重新开始写显化日记。",
+      "error_message": "incorrect api key",
+      "error_status": 401
+    },
+    {
+      "id": "retrieval-search-failure",
+      "type": "retrieval_failure",
+      "user_id": "00000000-0000-4000-8000-000000000001",
+      "query": "我最近重新开始写显化日记"
+    },
+    {
+      "id": "knowledge-provider-failure",
+      "type": "knowledge_failure",
+      "query": "如何稳定养成新习惯"
+    },
+    {
+      "id": "knowledge-provider-unconfigured",
+      "type": "knowledge_unconfigured",
+      "query": "如何稳定养成新习惯"
+    }
+  ]
+}

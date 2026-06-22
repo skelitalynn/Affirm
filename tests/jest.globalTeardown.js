@@ -9,5 +9,6 @@ module.exports = async () => {
     } catch (e) {
         // Ignore teardown errors to avoid masking test failures
     }
-};
 
+    await new Promise((resolve) => setTimeout(resolve, 250));
+};

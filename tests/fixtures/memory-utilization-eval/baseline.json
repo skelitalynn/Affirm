@@ -1,0 +1,84 @@
+{
+  "name": "memory-utilization-baseline-v1",
+  "description": "验证 recalled memory 是否被 assistant 回复真正利用。",
+  "users": [
+    {
+      "label": "target",
+      "username": "memory_utilization_target",
+      "telegram_id_seed": 941001,
+      "profile": {
+        "goals": "稳定执行感",
+        "status": "active",
+        "preferences": {
+          "summary": "最近在重建执行节奏。",
+          "facts": ["容易在开始前犹豫"],
+          "communication_preferences": ["喜欢温柔直接的提醒"],
+          "open_loops": ["恢复晨间复盘"]
+        }
+      },
+      "events": [
+        {
+          "fixture_id": "target_morning_commitment",
+          "event_type": "commitment",
+          "title": "恢复晨间复盘",
+          "summary": "用户承诺重新恢复晨间复盘，先连续坚持 7 天。",
+          "detail": "她希望先从每天 10 分钟开始，降低启动门槛。",
+          "keywords": ["晨间复盘", "10 分钟", "连续性"],
+          "importance": 0.92,
+          "confidence": 0.9,
+          "happened_at": "2026-04-12T08:00:00.000Z"
+        },
+        {
+          "fixture_id": "target_gentle_preference",
+          "event_type": "preference_signal",
+          "title": "偏好温柔直接的提醒方式",
+          "summary": "用户更喜欢温柔但直接的反馈，不喜欢说教和过度施压。",
+          "detail": "提醒她时可以坚定，但不要带评判口吻。",
+          "keywords": ["温柔", "直接", "说教"],
+          "importance": 0.73,
+          "confidence": 0.87,
+          "happened_at": "2026-04-05T08:00:00.000Z"
+        },
+        {
+          "fixture_id": "target_visibility_fear",
+          "event_type": "fear_pattern",
+          "title": "害怕公开表达愿望",
+          "summary": "用户在公开表达目标时会担心被别人评价，容易收缩。",
+          "detail": "一想到被熟人看到就会降低行动感和表达欲。",
+          "keywords": ["公开表达", "被评价", "害怕"],
+          "importance": 0.84,
+          "confidence": 0.82,
+          "happened_at": "2026-03-27T08:00:00.000Z"
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "morning-commitment-used-in-response",
+      "user_label": "target",
+      "query": "你还记得我之前答应过要恢复晨间复盘吗",
+      "limit": 3,
+      "recent_messages": [
+        {
+          "role": "assistant",
+          "content": "我们先把动作缩小一点。"
+        }
+      ],
+      "expected_event_fixture_ids": ["target_morning_commitment"],
+      "assistant_response": "我记得，你前面答应过要把晨间复盘重新捡起来。先不要追求完美，我们还是按每天 10 分钟去保住连续性。",
+      "expected_response_patterns": ["晨间复盘", "10 分钟", "连续性"],
+      "disallowed_response_patterns": ["公开表达愿望"]
+    },
+    {
+      "id": "preference-used-in-response",
+      "user_label": "target",
+      "query": "提醒我时继续温柔一点，不要太说教",
+      "limit": 3,
+      "expected_event_fixture_ids": ["target_gentle_preference"],
+      "assistant_response": "我会继续用温柔但直接的方式提醒你，不会用说教口吻压你，我们把节奏稳住就好。",
+      "expected_response_patterns": ["温柔", "直接", "说教"],
+      "disallowed_response_patterns": ["公开表达愿望"]
+    }
+  ]
+}

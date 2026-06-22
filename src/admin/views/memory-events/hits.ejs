@@ -1,0 +1,57 @@
+<div class="action-bar">
+    <a href="/admin/memory-events" class="btn btn-secondary">
+        <i class="fas fa-bookmark"></i> 返回 Memory Events
+    </a>
+    <form method="GET" action="/admin/memory-events/hits" class="filter-form">
+        <div class="filter-group">
+            <label for="user_id">User ID</label>
+            <input id="user_id" name="user_id" class="form-control" value="<%= filters.userId || '' %>">
+        </div>
+        <div class="filter-group">
+            <label for="event_id">Memory Event ID</label>
+            <input id="event_id" name="event_id" class="form-control" value="<%= filters.eventId || '' %>">
+        </div>
+        <button type="submit" class="btn btn-primary">
+            <i class="fas fa-search"></i> 筛选
+        </button>
+    </form>
+</div>
+
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>时间</th>
+            <th>用户</th>
+            <th>Trace ID</th>
+            <th>命中数</th>
+            <th>回复内容</th>
+            <th>操作</th>
+        </tr>
+    </thead>
+    <tbody>
+        <% if (messages && messages.length > 0) { %>
+            <% messages.forEach(message => { %>
+                <% const traceId = message?.metadata?.trace_id || '-'; %>
+                <tr>
+                    <td><%= new Date(message.created_at).toLocaleString('zh-CN') %></td>
+                    <td>
+                        <div><%= message.username || '-' %></div>
+                        <div class="text-muted"><code><%= message.user_id %></code></div>
+                    </td>
+                    <td><code><%= traceId %></code></td>
+                    <td><%= message.memory_ref_count || (message?.metadata?.memory_refs?.length || 0) %></td>
+                    <td><div class="table-preview"><%= message.content %></div></td>
+                    <td>
+                        <a href="/admin/memory-events/hits/<%= message.id %>" class="btn btn-sm btn-secondary">
+                            <i class="fas fa-eye"></i> 查看详情
+                        </a>
+                    </td>
+                </tr>
+            <% }) %>
+        <% } else { %>
+            <tr>
+                <td colspan="6" class="text-center">暂无命中回复</td>
+            </tr>
+        <% } %>
+    </tbody>
+</table>
