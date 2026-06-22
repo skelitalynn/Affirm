@@ -11,19 +11,21 @@
 
 1. 把高层项目定义、产品边界和重建建议收口到 `docs/` 顶层 Harness 文档
 2. 删除已经被吸收的高层重复文档，避免继续维护两套项目说明
-3. 把派生表达材料从项目主路由中隔离出去
-4. 保留 `skills/harness-adopter/`、`.harness/` 和 `scripts/harness/` 作为文档工作流和任务验证基座
+3. 将旧专题目录的必要口径合并进顶层文档
+4. 把派生表达材料从项目主路由中隔离出去
+5. 保留 `skills/harness-adopter/`、`.harness/` 和 `scripts/harness/` 作为文档工作流和任务验证基座
+6. 将 Knowledge RAG 选型收敛为 PostgreSQL + pgvector，关键词检索作为 fallback
 
 ## 当前优先级
 
-### 如果继续维护当前仓库
+如果继续维护当前仓库：
 
 1. 真实 transcript replay eval 扩样
 2. `utilization` 与 `live_ai` 回归
 3. `ranking v2` 优化
-4. `memory_events` compaction / merge / 衰减治理
+4. `memory_events` compaction、merge、衰减治理
 
-### 如果准备重建 `v3`
+如果准备重建 `v3`：
 
 1. 明确 `coaching_state`
 2. 用更轻的应用层重搭 `messages / profiles / memory_events`

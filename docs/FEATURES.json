@@ -3,13 +3,26 @@
   "features": [
     {
       "id": "F-003",
-      "behavior": "高层项目文档迁移到顶层 Harness 文档，隔离派生表达材料，并删除重复知识源",
+      "behavior": "docs 只保留顶层 Harness 项目文档，旧专题目录和派生报告目录被删除，项目主路由不再引用平行知识源",
       "state": "passing",
       "verification": [
         "python3 scripts/harness/doctor.py",
         "python3 scripts/harness/verify_docs_layout.py"
       ],
-      "evidence": ".harness/evidence/F-003/20260622T032328Z/result.json",
+      "evidence": ".harness/evidence/F-003/20260622T034412Z/result.json",
+      "blocked_reason": null
+    },
+    {
+      "id": "F-004",
+      "behavior": "Knowledge RAG 选型切换为 PostgreSQL + pgvector 主检索，并以本地关键词检索作为 fallback，代码和文档不再依赖 Haystack sidecar",
+      "state": "active",
+      "verification": [
+        "python3 scripts/harness/doctor.py",
+        "python3 scripts/harness/verify_docs_layout.py",
+        "npm run lint",
+        "npm run test:unit -- tests/unit/models/knowledge.test.js tests/unit/services/knowledge-vector-store.test.js"
+      ],
+      "evidence": null,
       "blocked_reason": null
     }
   ]

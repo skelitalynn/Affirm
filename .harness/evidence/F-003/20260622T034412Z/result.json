@@ -1,0 +1,19 @@
+{
+  "feature_id": "F-003",
+  "verified_at": "20260622T034412Z",
+  "passed": true,
+  "commands": [
+    {
+      "command": "python3 scripts/harness/doctor.py",
+      "returncode": 0,
+      "log": ".harness/evidence/F-003/20260622T034412Z/command-01.log"
+    },
+    {
+      "command": "python3 scripts/harness/verify_docs_layout.py",
+      "returncode": 0,
+      "log": ".harness/evidence/F-003/20260622T034412Z/command-02.log"
+    }
+  ],
+  "git_head": "4bd5d05",
+  "working_tree_dirty": true
+}

@@ -1,11 +1,11 @@
 # Affirm 文档入口
 
-**更新日期**：2026-06-22  
-**当前状态**：高层项目知识已经收口到 `docs/` 顶层 Harness 文档；`architecture/`、`development/` 和 `reports/` 只承担技术深挖或历史追溯，不再并行维护第二套项目说明书。
+**更新日期**：2026-06-22
+**当前状态**：项目主文档已收口为 Harness 顶层文件。旧专题目录不再作为长期维护入口，相关口径已经合并进下面 6 份文档。
 
 ## 1. 先看这 6 份
 
-第一次接手项目，优先读下面这些：
+第一次接手项目，只读下面这些：
 
 1. [架构与产品边界](ARCHITECTURE.md)
 2. [开发与启动](DEVELOPMENT.md)
@@ -18,57 +18,36 @@
 
 | 你现在要解决什么 | 去看哪里 |
 |---|---|
-| 这个项目到底要做什么、哪些该保留到重建版 | [架构与产品边界](ARCHITECTURE.md) |
-| 现在这套系统是怎么分层的 | [架构与产品边界](ARCHITECTURE.md) |
-| 环境、配置、启动、自检 | [开发与启动](DEVELOPMENT.md)、[环境启动与自检](development/01-环境启动与自检.md) |
-| Telegram 主链路、prompt、trace | [Telegram 对话链路](development/02-Telegram-对话链路.md) |
-| Haystack 和外部知识 | [Knowledge RAG](development/03-Knowledge-RAG.md)、[Knowledge RAG 架构](architecture/knowledge-rag-architecture.md) |
-| 数据库和迁移 | [数据库与迁移](development/05-数据库与迁移.md)、[数据库设计](database/数据库设计.md) |
-| 测试、验收、eval 怎么跑 | [测试与完成定义](TESTING.md) |
-| 长期记忆目标架构 | [分层上下文管理架构](architecture/layered-context-management-architecture.md)、[显化导师长期记忆架构](architecture/manifest-coach-memory-architecture.md) |
-| `memory_events` 评估、排序和治理 | [memory_events 评估排序与治理](development/09-memory-events-评估排序与治理.md) |
-| eval 方法与发布前验证思路 | [AI Agent Evals 方法与落地](development/10-AI-Agent-Evals-方法与落地.md) |
-| 当前仓库真实状态和下一步 | [当前进度](PROGRESS.md) |
-| 为什么文档这样收口 | [关键决策](DECISIONS.md) |
+| 项目到底要做什么、重建时保留什么 | [架构与产品边界](ARCHITECTURE.md) |
+| 当前系统怎么分层、哪些边界不能混 | [架构与产品边界](ARCHITECTURE.md) |
+| 环境变量、启动、常用命令、数据库迁移 | [开发与启动](DEVELOPMENT.md) |
+| Telegram、AI、Memory、RAG、Admin 维护入口 | [开发与启动](DEVELOPMENT.md) |
+| 测试、eval、交付标准 | [测试与完成定义](TESTING.md) |
+| 当前真实状态和下一步 | [当前进度](PROGRESS.md) |
+| 为什么文档这样收口、为什么准备重建 | [关键决策](DECISIONS.md) |
+| 当前 Harness 任务和验证命令 | [功能状态](FEATURES.json) |
 
-## 3. 建议阅读顺序
+## 3. 文档口径
 
-### 第一次接手项目
+当前项目文档遵循一个简单规则：
 
-1. [架构与产品边界](ARCHITECTURE.md)
-2. [开发与启动](DEVELOPMENT.md)
-3. [当前进度](PROGRESS.md)
-4. [测试与完成定义](TESTING.md)
-5. [Telegram 对话链路](development/02-Telegram-对话链路.md)
-6. [memory_events 评估排序与治理](development/09-memory-events-评估排序与治理.md)
+1. `docs/README.md` 是唯一文档入口
+2. 顶层 Harness 文档是唯一项目知识源
+3. 不再维护专题子目录或平行说明书
+4. 新增长期项目知识时，优先合并进 `ARCHITECTURE.md`、`DEVELOPMENT.md`、`TESTING.md`、`PROGRESS.md` 或 `DECISIONS.md`
+5. 历史报告和面试表达材料不作为项目主路由，不用于指导实现
 
-### 准备重建 `v3`
+## 4. Agent 工作流
 
-1. [架构与产品边界](ARCHITECTURE.md)
-2. [分层上下文管理架构](architecture/layered-context-management-architecture.md)
-3. [显化导师长期记忆架构](architecture/manifest-coach-memory-architecture.md)
-4. [长期记忆升级路线](development/07-长期记忆升级路线.md)
-5. [memory_events 评估排序与治理](development/09-memory-events-评估排序与治理.md)
-6. [当前进度](PROGRESS.md)
+当前仓库使用 `harness-adopter` 维护 Agent 工作流。
 
-## 4. 目录口径
+常用命令：
 
-当前 `docs/` 的职责很简单：
+```bash
+python3 scripts/harness/doctor.py
+python3 scripts/harness/verify_docs_layout.py
+python3 scripts/harness/task.py list
+python3 scripts/harness/finish.py
+```
 
-1. 顶层文档是唯一高层项目知识源
-2. `architecture/` 保留专题架构设计
-3. `development/` 保留模块级维护文档
-4. `reports/` 只保留历史验证和阶段报告
-
-## 5. Harness 路由
-
-当前仓库使用 `harness-adopter` 的增量接入方式维护 Agent 工作流。
-
-如需查看 Harness 状态，优先看：
-
-1. [架构与产品边界](ARCHITECTURE.md)
-2. [当前进度](PROGRESS.md)
-3. [关键决策](DECISIONS.md)
-4. [开发与启动](DEVELOPMENT.md)
-5. [测试与完成定义](TESTING.md)
-6. [功能状态](FEATURES.json)
+任务完成前，必须能从 [功能状态](FEATURES.json) 找到对应行为和验证证据。

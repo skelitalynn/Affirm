@@ -18,17 +18,23 @@
 
 ### 规则 2：AI 不允许在 root 创建 markdown 文件
 
-AI 自动生成的任何文档、报告、分析，必须写入对应的 `docs/` 子目录。
+AI 自动生成的任何长期项目文档、报告、分析，必须合并进 `docs/` 顶层 Harness 文档。
 
-### 规则 3：文档必须按类型分类存放
+### 规则 3：项目文档只维护顶层 Harness 文件
 
-| 文档类型 | 目标目录 |
-|---------|---------|
-| 架构设计、技术方案 | `docs/architecture/` |
-| 开发日志、进度报告、审计 | `docs/reports/` |
-| 数据库设计、ER 图 | `docs/database/` |
-| 项目概述、需求说明 | `docs/` 顶层 Harness 文档 |
-| 开发计划、技术路线 | `docs/development/` |
+当前项目不再按专题子目录拆分项目说明。
+
+长期维护的项目文档只允许使用：
+
+- `docs/README.md`
+- `docs/ARCHITECTURE.md`
+- `docs/DEVELOPMENT.md`
+- `docs/TESTING.md`
+- `docs/PROGRESS.md`
+- `docs/DECISIONS.md`
+- `docs/FEATURES.json`
+
+新增项目知识必须合并进上述文件之一。不要重新创建平行知识源目录。
 
 ---
 
@@ -111,7 +117,7 @@ docker-compose.yml
 ```
 Affirm/
 ├── src/           # 核心源代码（唯一业务逻辑存放处）
-├── docs/          # 所有文档（按子目录分类）
+├── docs/          # Harness 顶层项目文档
 ├── scripts/       # 自动化脚本
 ├── tests/         # 测试代码
 ├── tools/         # 调试诊断工具
